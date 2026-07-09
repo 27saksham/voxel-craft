@@ -1,0 +1,3618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voxel Craft — Skeleton</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', system-ui, sans-serif; }
+  canvas { display: block; }
+
+  /* ---- Crosshair ---- */
+  #crosshair {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 20px; height: 20px; pointer-events: none; z-index: 10;
+  }
+  #crosshair::before, #crosshair::after {
+    content: ''; position: absolute; background: rgba(255,255,255,0.85);
+  }
+  #crosshair::before { left: 9px; top: 0; width: 2px; height: 20px; }
+  #crosshair::after  { top: 9px; left: 0; width: 20px; height: 2px; }
+
+  /* ---- Inventory bar (left hand + right-hand hotbar) ---- */
+  #hud-bar {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: flex-end; gap: 20px; z-index: 10; pointer-events: none;
+  }
+  .hand-group { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .hand-label { color: rgba(255,255,255,0.55); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; }
+  .row {
+    display: flex; gap: 4px; padding: 4px; border-radius: 7px;
+    border: 2px solid transparent; transition: box-shadow .1s, border-color .1s;
+  }
+  .row.active-hand {                                  /* glow the hand F is on */
+    border-color: rgba(255,215,94,0.7);
+    box-shadow: 0 0 14px rgba(255,215,94,0.45);
+    background: rgba(255,215,94,0.10);
+  }
+  .slot {
+    width: 46px; height: 46px; border: 3px solid rgba(0,0,0,0.6);
+    background: rgba(30,30,30,0.55); border-radius: 4px; position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .slot.selected { border-color: #fff; background: rgba(60,60,60,0.7); }
+  .slot .swatch {
+    width: 30px; height: 30px; border-radius: 2px;
+    background-size: cover; image-rendering: pixelated;
+    box-shadow: inset -4px -4px 0 rgba(0,0,0,0.25);
+  }
+  .slot.empty .swatch { display: none; }
+  .slot .num {
+    position: absolute; top: 1px; left: 3px;
+    color: rgba(255,255,255,0.65); font-size: 9px; font-weight: bold;
+  }
+  .slot .count {
+    position: absolute; bottom: 0px; right: 3px;
+    color: #fff; font-size: 12px; font-weight: bold; text-shadow: 1px 1px 0 #000;
+  }
+
+  /* ---- Health + hunger rows ---- */
+  #stats {
+    position: fixed; bottom: 112px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 40px; z-index: 10; pointer-events: none;
+    font-size: 16px; text-shadow: 1px 1px 0 rgba(0,0,0,0.7);
+  }
+  #hearts span, #hunger span, #armorbar span { margin: 0 1px; }
+  #stats { flex-wrap: wrap; justify-content: center; }
+  #armorbar { width: 100%; text-align: left; }
+  #armorbar .full { filter: none; }
+  #armorbar .half { filter: grayscale(0.6) brightness(0.8); }
+  #armorbar .off  { filter: grayscale(1) brightness(0.35); }
+  #hearts .full { color: #e2382a; }
+  #hearts .half { color: #e2382a; opacity: 0.55; }
+  #hearts .off  { color: #3a3a3a; }
+  #hunger .full { filter: none; }
+  #hunger .half { filter: grayscale(0.5) brightness(0.75); }
+  #hunger .off  { filter: grayscale(1) brightness(0.35); }
+
+  /* ---- HUD / legend ---- */
+  #legend {
+    position: fixed; top: 12px; left: 12px; z-index: 10;
+    color: rgba(255,255,255,0.85); font-size: 12px; line-height: 1.6;
+    background: rgba(0,0,0,0.35); padding: 10px 14px; border-radius: 6px;
+    pointer-events: none;
+  }
+  #legend b { color: #ffd75e; }
+
+  .hidden { display: none !important; }
+
+  /* ---- Sleeping fade-to-black ---- */
+  #sleepFade {
+    position: fixed; inset: 0; z-index: 50; background: #000;
+    opacity: 0; pointer-events: none; transition: opacity 0.6s;
+    display: flex; align-items: center; justify-content: center;
+    color: #ddd; font: 20px monospace;
+  }
+  #sleepFade.asleep { opacity: 1; }
+
+  /* ---- Inventory screen (E) ---- */
+  #inv {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.45); user-select: none;
+  }
+  #invPanel {
+    background: #c6c6c6; padding: 16px; border-radius: 6px;
+    border: 4px solid; border-color: #fff #565656 #565656 #fff;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+  .inv-top { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+  .islot {
+    width: 44px; height: 44px; background: #8b8b8b; position: relative;
+    border: 2px solid; border-color: #373737 #fff #fff #373737;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .islot .swatch { width: 32px; height: 32px; background-size: cover; image-rendering: pixelated; pointer-events: none; }
+  .islot .count {
+    position: absolute; bottom: 0; right: 2px; pointer-events: none;
+    color: #fff; text-shadow: 1px 1px 0 #000; font-weight: bold; font-size: 13px;
+  }
+  .islot .ghost { opacity: 0.35; font-size: 22px; pointer-events: none; }
+  #armorCol { display: flex; flex-direction: column; gap: 3px; }
+  .doll-wrap { background: #000; border: 2px solid #373737; padding: 4px 12px; }
+  #doll { width: 96px; height: 192px; image-rendering: pixelated; display: block; }
+  #offCol { align-self: flex-end; }
+  #craftArea { margin-left: 8px; }
+  .craft-label { font-size: 18px; color: #3f3f3f; margin-bottom: 6px; font-family: monospace; }
+  .craft-row { display: flex; align-items: center; gap: 10px; }
+  #craftCells { display: grid; gap: 3px; }
+  .craft-arrow { font-size: 30px; color: #8b8b8b; }
+  .inv-grid { display: grid; grid-template-columns: repeat(10, 44px); gap: 3px; }
+  .hotsep { margin-top: 10px; }
+  #cursorItem {
+    position: fixed; z-index: 40; pointer-events: none;
+    width: 36px; height: 36px; transform: translate(-18px, -18px);
+  }
+  #cursorItem .swatch { width: 36px; height: 36px; background-size: cover; image-rendering: pixelated; }
+  #cursorItem .count {
+    position: absolute; bottom: -2px; right: 0;
+    color: #fff; text-shadow: 1px 1px 0 #000; font-weight: bold; font-size: 13px;
+  }
+
+  /* ---- Death screen ---- */
+  #deathScreen {
+    position: fixed; inset: 0; z-index: 35;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 24px; background: rgba(96, 8, 8, 0.62);
+  }
+  #deathTitle { width: 480px; image-rendering: pixelated; }
+  #deathCause {
+    color: #ffd7d7; font-size: 18px; font-family: monospace;
+    text-shadow: 2px 2px 0 #300;
+  }
+  #respawnBtn {
+    font: bold 18px monospace; padding: 10px 46px; cursor: pointer;
+    background: #8b8b8b; color: #fff; text-shadow: 1px 1px 0 #333;
+    border: 3px solid; border-color: #fff #4a4a4a #4a4a4a #fff;
+  }
+  #respawnBtn:hover { background: #9d9da0; }
+
+  /* ---- Click-to-play overlay ---- */
+  #overlay {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(10, 15, 25, 0.75); backdrop-filter: blur(4px);
+    color: #fff; cursor: pointer; text-align: center;
+  }
+  #overlay h1 { font-size: 42px; margin-bottom: 8px; letter-spacing: 2px; }
+  #overlay p { font-size: 16px; opacity: 0.8; }
+  #overlay.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div id="crosshair"></div>
+<div id="stats">
+  <div id="armorbar"></div>
+  <div id="hearts"></div>
+  <div id="hunger"></div>
+</div>
+<div id="hud-bar">
+  <div class="hand-group">
+    <span class="hand-label">Left · F</span>
+    <div id="lefthand" class="row"></div>
+  </div>
+  <div class="hand-group">
+    <span class="hand-label">Right</span>
+    <div id="hotbar" class="row"></div>
+  </div>
+</div>
+<div id="legend">
+  <b>WASD</b> move &nbsp;·&nbsp; <b>R+W</b> sprint &nbsp;·&nbsp; <b>Shift</b> sneak &nbsp;·&nbsp; <b>Space</b> jump<br>
+  <b>Hold left click</b> mine / attack &nbsp;·&nbsp; <b>Right click</b> place / eat<br>
+  <b>Shift + right click</b> at an edge = bridge outward<br>
+  <b>E</b> inventory / crafting &nbsp;·&nbsp; <b>1–9,0</b> slots &nbsp;·&nbsp; <b>F</b> swap hand<br>
+  <b>Right click</b> a crafting table / furnace / chest to use it<br>
+  <b>Right click a bed at night</b> to sleep &nbsp;·&nbsp; monsters roam the dark
+</div>
+<div id="overlay">
+  <h1>VOXEL CRAFT</h1>
+  <p>Click anywhere to play</p>
+</div>
+
+<div id="inv" class="hidden">
+  <div id="invPanel">
+    <div class="inv-top">
+      <div id="armorCol"></div>
+      <div class="doll-wrap"><canvas id="doll" width="64" height="128"></canvas></div>
+      <div id="offCol"></div>
+      <div id="craftArea">
+        <div class="craft-label">Crafting</div>
+        <div class="craft-row">
+          <div id="craftCells"></div>
+          <div class="craft-arrow">➜</div>
+          <div id="resultCell"></div>
+        </div>
+      </div>
+    </div>
+    <div id="containerArea" class="hidden">
+      <div class="craft-label" id="contLabel">Furnace</div>
+      <div id="furnaceUI" class="craft-row">
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:center">
+          <div id="finCell"></div>
+          <div id="fireCell" style="font-size:20px;opacity:0.25">🔥</div>
+          <div id="ffuelCell"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+          <div class="craft-arrow">➜</div>
+          <div id="fprog" style="height:4px;width:0;max-width:38px;background:#e8862a;align-self:flex-start"></div>
+        </div>
+        <div id="foutCell"></div>
+      </div>
+      <div id="chestGrid" class="inv-grid" style="grid-template-columns:repeat(9,44px)"></div>
+    </div>
+    <div id="mainGrid" class="inv-grid"></div>
+    <div id="hotGrid" class="inv-grid hotsep"></div>
+  </div>
+</div>
+<div id="cursorItem" class="hidden"></div>
+<div id="sleepFade"></div>
+
+<div id="deathScreen" class="hidden">
+  <canvas id="deathTitle" width="120" height="24"></canvas>
+  <div id="deathCause"></div>
+  <button id="respawnBtn">Respawn</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+/* ================================================================
+ * SECTION 1: WORLD DATA
+ * A flat Uint8Array of block ids is the single source of truth.
+ * Every render, collision check, and raycast derives from it. Never
+ * touch the scene without going through setBlock()/removeBlock().
+ * ================================================================ */
+
+const WORLD_HALF = 50000;   // world spans ±50,000 blocks in X and Z (100k × 100k)
+const WORLD_HEIGHT = 400;   // max build height
+const CHUNK = 20;           // chunk footprint in blocks
+
+// Block definitions: hardness = seconds of held mining to break.
+// Bedrock's Infinity means progress never reaches 1.0 — unbreakable.
+// `item: true` marks non-placeable inventory items; `food` = hunger
+// restored on eating; `tool` speeds mining; `armor` names its slot.
+// `cross` blocks render as crossed sprite quads (torch/ladder) and
+// don't block movement; `seeThrough` blocks don't hide neighbor faces
+// (glass); `fuel` = seconds a furnace burns per item; `climb` = ladder.
+const BLOCK_TYPES = {
+  bedrock:  { label: 'Bedrock',        breakable: false, hardness: Infinity },
+  grass:    { label: 'Grass',          breakable: true,  hardness: 0.4 },
+  dirt:     { label: 'Dirt',           breakable: true,  hardness: 0.4 },
+  stone:    { label: 'Stone',          breakable: true,  hardness: 1.2 },
+  coal_ore:    { label: 'Coal Ore',    breakable: true,  hardness: 1.5 },
+  copper_ore:  { label: 'Copper Ore',  breakable: true,  hardness: 2.0 },
+  iron_ore:    { label: 'Iron Ore',    breakable: true,  hardness: 2.2 },
+  gold_ore:    { label: 'Gold Ore',    breakable: true,  hardness: 2.2 },
+  diamond_ore: { label: 'Diamond Ore', breakable: true,  hardness: 3.0 },
+  wool:     { label: 'Wool',           breakable: true,  hardness: 0.5 },
+  wood:     { label: 'Planks',         breakable: true,  hardness: 0.6, fuel: 4.5 },
+  log:      { label: 'Log',            breakable: true,  hardness: 0.6, fuel: 4.5 },
+  leaves:   { label: 'Leaves',         breakable: true,  hardness: 0.2 },
+  sand:     { label: 'Sand',           breakable: true,  hardness: 0.4 },
+  crafting: { label: 'Crafting Table', breakable: true,  hardness: 0.6, fuel: 4.5 },
+  furnace:  { label: 'Furnace',        breakable: true,  hardness: 1.8 },
+  smoker:   { label: 'Smoker',         breakable: true,  hardness: 1.8 },
+  chest:    { label: 'Chest',          breakable: true,  hardness: 0.8, fuel: 4.5 },
+  jukebox:  { label: 'Jukebox',        breakable: true,  hardness: 0.8, fuel: 4.5 },
+  glass:    { label: 'Glass',          breakable: true,  hardness: 0.3, seeThrough: true },
+  glass_pane: { label: 'Glass Pane',   breakable: true,  hardness: 0.3,  cross: true },
+  iron_bars:  { label: 'Iron Bars',    breakable: true,  hardness: 1.5,  cross: true },
+  torch:      { label: 'Torch',        breakable: true,  hardness: 0.05, cross: true },
+  ladder:     { label: 'Ladder',       breakable: true,  hardness: 0.4,  cross: true, climb: true, fuel: 1.5 },
+  // bed is a half-height block; right-click it at night to sleep
+  bed:        { label: 'Bed',          breakable: true,  hardness: 0.4,  low: true, seeThrough: true },
+  // ---- items (never exist as world blocks) ----
+  apple:          { label: 'Apple',          item: true, food: 4 },
+  golden_apple:   { label: 'Golden Apple',   item: true, food: 10 },
+  chicken_meat:   { label: 'Raw Chicken',    item: true, food: 3 },
+  lamb_meat:      { label: 'Raw Lamb',       item: true, food: 4 },
+  cooked_chicken: { label: 'Cooked Chicken', item: true, food: 6 },
+  cooked_lamb:    { label: 'Cooked Lamb',    item: true, food: 8 },
+  feather:  { label: 'Feather',      item: true },
+  rotten_flesh: { label: 'Rotten Flesh', item: true, food: 2 },
+  bone:      { label: 'Bone',        item: true },
+  string:    { label: 'String',      item: true },
+  gunpowder: { label: 'Gunpowder',   item: true },
+  arrow:     { label: 'Arrow',       item: true },
+  bow:       { label: 'Bow',         item: true },
+  stick:    { label: 'Stick',        item: true, fuel: 1.5 },
+  coal:     { label: 'Coal',         item: true, fuel: 24 },
+  charcoal: { label: 'Charcoal',     item: true, fuel: 24 },
+  copper:   { label: 'Copper Ingot', item: true },
+  iron:     { label: 'Iron Ingot',   item: true },
+  gold:     { label: 'Gold Ingot',   item: true },
+  diamond:  { label: 'Diamond',      item: true },
+  shield:   { label: 'Shield',       item: true },
+  // ---- craftable utility items (recipes exist; functionality later) ----
+  bowl:          { label: 'Bowl',            item: true, fuel: 1.5 },
+  sign:          { label: 'Sign',            item: true, fuel: 4.5 },
+  boat:          { label: 'Boat',            item: true, fuel: 4.5 },
+  chest_boat:    { label: 'Boat with Chest', item: true },
+  minecart:      { label: 'Minecart',        item: true },
+  chest_minecart:{ label: 'Minecart with Chest', item: true },
+  hopper:        { label: 'Hopper',          item: true },
+  trapped_chest: { label: 'Trapped Chest',   item: true },
+  rails:         { label: 'Rails',           item: true },
+  bucket:        { label: 'Bucket',          item: true },
+  shears:        { label: 'Shears',          item: true },
+  cauldron:      { label: 'Cauldron',        item: true },
+  glass_bottle:  { label: 'Glass Bottle',    item: true },
+  tripwire_hook: { label: 'Tripwire Hook',   item: true },
+  painting:      { label: 'Painting',        item: true },
+  lightning_rod: { label: 'Lightning Rod',   item: true },
+  brush:         { label: 'Brush',           item: true },
+  stonecutter:   { label: 'Stonecutter',     item: true },
+  smithing_table:{ label: 'Smithing Table',  item: true, fuel: 4.5 },
+  campfire:      { label: 'Campfire',        item: true },
+};
+
+// Tools come in six material tiers. mult divides mining time on the
+// right block class; dmg is sword damage (fist = 1). Gold is fastest
+// but weak, exactly like real Minecraft.
+const TOOL_TIERS = {
+  wood:    { L: 'Wooden',  mult: 3,  dmg: 2 },
+  stone:   { L: 'Stone',   mult: 5,  dmg: 3 },
+  copper:  { L: 'Copper',  mult: 6,  dmg: 3 },
+  iron:    { L: 'Iron',    mult: 8,  dmg: 4 },
+  gold:    { L: 'Golden',  mult: 12, dmg: 2 },
+  diamond: { L: 'Diamond', mult: 10, dmg: 5 },
+};
+for (const [mat, t] of Object.entries(TOOL_TIERS)) {
+  BLOCK_TYPES[mat + '_pick']   = { label: t.L + ' Pickaxe', item: true, tool: { cls: 'pick',   mult: t.mult } };
+  BLOCK_TYPES[mat + '_axe']    = { label: t.L + ' Axe',     item: true, tool: { cls: 'axe',    mult: t.mult } };
+  BLOCK_TYPES[mat + '_shovel'] = { label: t.L + ' Shovel',  item: true, tool: { cls: 'shovel', mult: t.mult } };
+  BLOCK_TYPES[mat + '_hoe']    = { label: t.L + ' Hoe',     item: true, tool: { cls: 'hoe',    mult: t.mult } };
+  BLOCK_TYPES[mat + '_sword']  = { label: t.L + ' Sword',   item: true,
+    tool: { cls: 'sword', mult: Math.ceil(t.mult / 2), dmg: t.dmg } };
+}
+
+// Armor comes in four material tiers — generate the 16 pieces.
+// `points` = armor points per piece (2 points = one 🛡 in the HUD bar,
+// vanilla values); diamond also carries TOUGHNESS, which blunts how
+// much big hits bypass armor (the vanilla 1.9 formula, below).
+const ARMOR_STATS = {
+  copper:  { head: 2, chest: 5, legs: 4, feet: 1, tough: 0 },
+  iron:    { head: 2, chest: 6, legs: 5, feet: 2, tough: 0 },
+  gold:    { head: 2, chest: 5, legs: 3, feet: 1, tough: 0 },
+  diamond: { head: 3, chest: 8, legs: 6, feet: 3, tough: 2 },
+};
+for (const mat of ['copper', 'iron', 'gold', 'diamond']) {
+  const L = TOOL_TIERS[mat].L, st = ARMOR_STATS[mat];
+  BLOCK_TYPES[mat + '_helmet']     = { label: L + ' Helmet',     item: true, armor: 'head',  tier: mat, points: st.head,  tough: st.tough };
+  BLOCK_TYPES[mat + '_chestplate'] = { label: L + ' Chestplate', item: true, armor: 'chest', tier: mat, points: st.chest, tough: st.tough };
+  BLOCK_TYPES[mat + '_leggings']   = { label: L + ' Leggings',   item: true, armor: 'legs',  tier: mat, points: st.legs,  tough: st.tough };
+  BLOCK_TYPES[mat + '_boots']      = { label: L + ' Boots',      item: true, armor: 'feet',  tier: mat, points: st.feet,  tough: st.tough };
+}
+
+// Which world blocks each tool class speeds up.
+const TOOL_TARGETS = {
+  pick:   ['stone', 'coal_ore', 'copper_ore', 'iron_ore', 'gold_ore', 'diamond_ore', 'furnace', 'smoker', 'iron_bars'],
+  axe:    ['log', 'wood', 'crafting', 'chest', 'jukebox', 'ladder', 'leaves'],
+  shovel: ['dirt', 'grass', 'sand'],
+  sword:  ['leaves', 'wool'],
+  hoe:    ['leaves'],
+};
+
+// What a furnace turns each input into (smelting, md §2/§4).
+const SMELT_RECIPES = {
+  copper_ore:   'copper',
+  iron_ore:     'iron',
+  gold_ore:     'gold',
+  sand:         'glass',
+  log:          'charcoal',
+  chicken_meat: 'cooked_chicken',
+  lamb_meat:    'cooked_lamb',
+};
+const SMELT_TIME = 3;   // seconds per item, like MC's 10s scaled down
+
+// Numeric block ids (0 = air). A 100k×100k×400 world is 4 TERABYTES
+// of voxels — it cannot exist in memory. Instead, terrain is a PURE
+// FUNCTION of (x,z): chunks are generated on demand around the player,
+// meshed nearby, evicted when far, and regenerate identically when
+// revisited. Player edits are stored sparsely and re-applied on regen.
+const TYPE_OF = [null, ...Object.keys(BLOCK_TYPES)];   // id -> type string
+const ID_OF = {};
+TYPE_OF.forEach((t, i) => { if (t) ID_OF[t] = i; });
+
+// CROSS_IDS render as sprite crosses and never block movement;
+// NO_OCCLUDE_IDS don't hide the faces of neighboring blocks (glass,
+// torches, ladders — you can see past them).
+const CROSS_IDS = new Set(), NO_OCCLUDE_IDS = new Set(), LOW_IDS = new Set();
+TYPE_OF.forEach((t, i) => {
+  if (!t) return;
+  if (BLOCK_TYPES[t].cross) { CROSS_IDS.add(i); NO_OCCLUDE_IDS.add(i); }
+  if (BLOCK_TYPES[t].seeThrough) NO_OCCLUDE_IDS.add(i);
+  if (BLOCK_TYPES[t].low) LOW_IDS.add(i);   // half-height blocks (bed)
+});
+
+// Solid = blocks the player/drops. Cross blocks (torch/ladder/pane)
+// are walk-through decorations.
+function solidAt(x, y, z) {
+  const t = getBlock(x, y, z);
+  return !!t && !BLOCK_TYPES[t].cross;
+}
+
+const chunks = new Map();        // "cx,cz" -> { data: Uint8Array, maxY, mesh }
+const editsByChunk = new Map();  // "cx,cz" -> Map(cellIndex -> id) — survives eviction
+const chunkKey = (cx, cz) => `${cx},${cz}`;
+const cellIndex = (lx, y, lz) => lx + CHUNK * (lz + CHUNK * y);
+const chunkOf = (v) => Math.floor(v / CHUNK);
+const key = (x, y, z) => `${x},${y},${z}`;   // still used as a mining-target id
+
+function inBounds(x, y, z) {
+  return x >= -WORLD_HALF && x < WORLD_HALF && z >= -WORLD_HALF && z < WORLD_HALF
+      && y >= 0 && y < WORLD_HEIGHT;
+}
+
+function getBlock(x, y, z) {
+  if (!inBounds(x, y, z)) return null;
+  const cx = chunkOf(x), cz = chunkOf(z);
+  const ch = chunks.get(chunkKey(cx, cz)) ?? generateChunk(cx, cz);
+  const id = ch.data[cellIndex(x - cx * CHUNK, y, z - cz * CHUNK)];
+  return id ? TYPE_OF[id] : null;
+}
+
+// setBlock / removeBlock write the chunk, record the edit for regen,
+// and rebuild the chunk's mesh (plus a border neighbor if touched).
+const torchSpots = new Set();   // "x,y,z" of every placed torch (drives glow lights)
+
+function writeBlock(x, y, z, id) {
+  if (!inBounds(x, y, z)) return;
+  const cx = chunkOf(x), cz = chunkOf(z);
+  const ck = chunkKey(cx, cz);
+  const ch = chunks.get(ck) ?? generateChunk(cx, cz);
+  const lx = x - cx * CHUNK, lz = z - cz * CHUNK;
+  const prev = ch.data[cellIndex(lx, y, lz)];
+  if (TYPE_OF[prev] === 'torch') torchSpots.delete(`${x},${y},${z}`);
+  if (TYPE_OF[id] === 'torch') torchSpots.add(`${x},${y},${z}`);
+  ch.data[cellIndex(lx, y, lz)] = id;
+  if (id && y + 1 > ch.maxY) ch.maxY = y + 1;
+  let em = editsByChunk.get(ck);
+  if (!em) editsByChunk.set(ck, em = new Map());
+  em.set(cellIndex(lx, y, lz), id);
+  buildChunkMesh(cx, cz);
+  const nb = (ncx, ncz) => { if (chunks.get(chunkKey(ncx, ncz))?.mesh) buildChunkMesh(ncx, ncz); };
+  if (lx === 0) nb(cx - 1, cz);
+  if (lx === CHUNK - 1) nb(cx + 1, cz);
+  if (lz === 0) nb(cx, cz - 1);
+  if (lz === CHUNK - 1) nb(cx, cz + 1);
+}
+
+const setBlock = (x, y, z, type) => writeBlock(x, y, z, ID_OF[type]);
+const removeBlock = (x, y, z) => writeBlock(x, y, z, 0);
+
+/* ---- Terrain: seeded value-noise heightmap (md §1) ---- */
+const SEED = (Math.random() * 1e9) | 0;
+
+function hash2(ix, iz) {
+  let n = Math.imul(ix, 374761393) + Math.imul(iz, 668265263) + SEED;
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+}
+const smoothT = (t) => t * t * (3 - 2 * t);
+function noise2(x, z) {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  const fx = smoothT(x - ix), fz = smoothT(z - iz);
+  const a = hash2(ix, iz), b = hash2(ix + 1, iz);
+  const c = hash2(ix, iz + 1), d = hash2(ix + 1, iz + 1);
+  return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
+}
+// fractal noise: stacked octaves, each half the size and weight
+function fbm(x, z, octaves) {
+  let v = 0, amp = 0.5, tot = 0;
+  for (let o = 0; o < octaves; o++) {
+    v += noise2(x, z) * amp; tot += amp;
+    x *= 2; z *= 2; amp *= 0.5;
+  }
+  return v / tot;
+}
+
+// 3D hash + value noise for caves (must be pure functions of the
+// coordinates so revisited chunks regenerate identically).
+function hash3(x, y, z) {
+  let n = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 2246822519);
+  n = Math.imul(n ^ (n >>> 13), 1274126177) + SEED;
+  n ^= n >>> 16;
+  return (n >>> 0) / 4294967295;
+}
+function noise3(x, y, z) {
+  const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+  const fx = smoothT(x - ix), fy = smoothT(y - iy), fz = smoothT(z - iz);
+  const x00 = hash3(ix, iy, iz)     + (hash3(ix+1, iy, iz)     - hash3(ix, iy, iz))     * fx;
+  const x10 = hash3(ix, iy+1, iz)   + (hash3(ix+1, iy+1, iz)   - hash3(ix, iy+1, iz))   * fx;
+  const x01 = hash3(ix, iy, iz+1)   + (hash3(ix+1, iy, iz+1)   - hash3(ix, iy, iz+1))   * fx;
+  const x11 = hash3(ix, iy+1, iz+1) + (hash3(ix+1, iy+1, iz+1) - hash3(ix, iy+1, iz+1)) * fx;
+  const y0 = x00 + (x10 - x00) * fy, y1 = x01 + (x11 - x01) * fy;
+  return y0 + (y1 - y0) * fz;
+}
+
+// Rolling hills everywhere + a sparse mountain mask + sunken pits —
+// scaled up for the 400-block height budget.
+function terrainHeight(x, z) {
+  let h = 60 + (fbm(x / 40, z / 40, 4) - 0.5) * 24;             // hills ±12
+  const m = fbm(x / 160 + 53.7, z / 160 + 91.2, 3);             // mountain mask
+  if (m > 0.55) h += Math.pow((m - 0.55) / 0.45, 1.7) * 110;    // peaks up to ~+110
+  const p = fbm(x / 60 + 210.4, z / 60 + 77.9, 2);              // depression mask
+  if (p < 0.36) h -= (0.36 - p) * 60;                           // holes/valleys to ~-21
+  return Math.max(4, Math.min(WORLD_HEIGHT - 20, Math.floor(h)));
+}
+
+// Blobby noise caves; evaluated only below the surface. Also breaches
+// the top layer, leaving natural holes and cave mouths.
+function caveAt(x, y, z) {
+  return noise3(x / 16, y / 11, z / 16) > 0.73;
+}
+
+// Deterministic tree placement: a column hosts a tree iff its hash
+// says so AND its surface is intact grass. Any chunk can answer this
+// for any column without global state — trees always match terrain.
+function treeAt(x, z) {
+  if (hash2(Math.imul(x, 3) + 11, Math.imul(z, 3) + 29) >= 0.004) return null;
+  if (x === 0 && z === 0) return null;                     // keep spawn clear
+  const h = terrainHeight(x, z);
+  if (h <= 45) return null;                                // no trees on sandy pit floors
+  if (caveAt(x, h, z)) return null;                        // surface carved away here
+  return { baseY: h, trunkH: 4 + Math.floor(hash2(x ^ 5, z ^ 9) * 2) };
+}
+
+const SPAWN = new THREE.Vector3();
+
+function surfaceY(x, z) {
+  for (let y = WORLD_HEIGHT - 1; y > 0; y--)
+    if (getBlock(x, y, z)) return y;
+  return 1;
+}
+
+function generateChunk(cx, cz) {
+  const ch = { data: new Uint8Array(CHUNK * CHUNK * WORLD_HEIGHT), maxY: 2, mesh: null };
+  chunks.set(chunkKey(cx, cz), ch);
+  const x0 = cx * CHUNK, z0 = cz * CHUNK;
+  const d = ch.data;
+
+  for (let lz = 0; lz < CHUNK; lz++)
+    for (let lx = 0; lx < CHUNK; lx++) {
+      const gx = x0 + lx, gz = z0 + lz;
+      const h = terrainHeight(gx, gz);
+      d[cellIndex(lx, 0, lz)] = ID_OF.bedrock;             // indestructible floor
+      for (let y = 1; y <= h; y++) {
+        if (y > 5 && caveAt(gx, y, gz)) continue;          // carved: leave air
+        let id;
+        if (y === h) id = h <= 45 ? ID_OF.sand : ID_OF.grass;
+        else if (y >= h - 3) id = ID_OF.dirt;
+        else {
+          // ore rarity ladder: coal common, copper fairly common,
+          // iron rare, gold rarer still, diamond very rare + deep only
+          const v = hash3(gx, y, gz);
+          id = v < 0.030 ? ID_OF.coal_ore
+             : v < 0.046  && y < 55 ? ID_OF.copper_ore
+             : v < 0.0495 && y < 40 ? ID_OF.iron_ore
+             : v < 0.0515 && y < 30 ? ID_OF.gold_ore
+             : v < 0.0519 && y < 14 ? ID_OF.diamond_ore
+             : ID_OF.stone;
+        }
+        d[cellIndex(lx, y, lz)] = id;
+      }
+      if (h + 1 > ch.maxY) ch.maxY = h + 1;
+    }
+
+  stampTrees(ch, cx, cz);
+
+  // re-apply this chunk's player edits so mined/built survives regen
+  const em = editsByChunk.get(chunkKey(cx, cz));
+  if (em) for (const [ci, id] of em) {
+    d[ci] = id;
+    const y = Math.floor(ci / (CHUNK * CHUNK));
+    if (id && y + 1 > ch.maxY) ch.maxY = y + 1;
+  }
+  return ch;
+}
+
+// Stamp every tree whose trunk or canopy overlaps this chunk. Trees
+// up to 2 blocks outside the border are consulted so canopies cross
+// chunk seams without needing neighbor data.
+function stampTrees(ch, cx, cz) {
+  const x0 = cx * CHUNK, z0 = cz * CHUNK;
+  for (let gx = x0 - 2; gx < x0 + CHUNK + 2; gx++)
+    for (let gz = z0 - 2; gz < z0 + CHUNK + 2; gz++) {
+      const t = treeAt(gx, gz);
+      if (!t) continue;
+      const topY = Math.min(t.baseY + t.trunkH, WORLD_HEIGHT - 3);
+      if (gx >= x0 && gx < x0 + CHUNK && gz >= z0 && gz < z0 + CHUNK)
+        for (let y = t.baseY + 1; y <= topY; y++)
+          ch.data[cellIndex(gx - x0, y, gz - z0)] = ID_OF.log;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++)
+          for (let dz = -1; dz <= 1; dz++) {
+            if (dy === 1 && (dx || dz)) continue;          // top layer = single cap
+            const lx = gx + dx - x0, lz = gz + dz - z0;
+            if (lx < 0 || lx >= CHUNK || lz < 0 || lz >= CHUNK) continue;
+            const ci = cellIndex(lx, topY + dy, lz);
+            if (!ch.data[ci]) ch.data[ci] = ID_OF.leaves;
+          }
+      if (topY + 2 > ch.maxY) ch.maxY = topY + 2;
+    }
+}
+
+/* ================================================================
+ * SECTION 2: RENDERING
+ * The world is drawn as merged chunk meshes (one BufferGeometry per
+ * 20×20-column chunk, faces culled against solid neighbors) textured
+ * from a single atlas — a handful of draw calls for millions of
+ * voxels. Per-type materials remain for drops/hand/thumbnails.
+ * ================================================================ */
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);                 // sky blue
+scene.fog = new THREE.Fog(0x87ceeb, 50, 115);                 // fog hides the streaming edge
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 300);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+// Lambert + directional light gives cheap per-face shading so the
+// flat-colored cubes read as 3D (top bright, sides mid, etc).
+const hemi = new THREE.HemisphereLight(0xffffff, 0x99bb77, 0.85);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff4d6, 1.1);
+sun.position.set(0.6, 1, 0.4);
+scene.add(sun);
+
+/* ---- Day/night cycle (md §6) ----
+ * Real Minecraft runs a 20-minute cycle; ours runs 10 minutes —
+ * 5 of daylight, 5 of monster-filled night. The sun orbits, light
+ * dims, sky + fog blend to a dark night blue. */
+const DAY_CYCLE = 600;                             // seconds per full day+night
+const DAY_SKY = new THREE.Color(0x87ceeb);
+const NIGHT_SKY = new THREE.Color(0x0a0f22);
+let worldTime = DAY_CYCLE * 0.05;                  // start just after sunrise
+let sunHeight = 1;                                 // sin of sun angle; <0 = night
+
+function updateDayNight(dt) {
+  worldTime += dt;
+  const ang = (worldTime / DAY_CYCLE) * Math.PI * 2;      // 0 = sunrise
+  const sunH = Math.sin(ang);
+  sunHeight = sunH;
+  sun.position.set(Math.cos(ang) * 0.8, sunH, 0.4);
+  sun.intensity = Math.max(0, sunH) * 1.1;
+  const daylight = THREE.MathUtils.clamp(sunH * 1.6 + 0.25, 0.07, 1);
+  hemi.intensity = 0.2 + 0.65 * daylight;                 // never pitch black
+  scene.background.copy(DAY_SKY).lerp(NIGHT_SKY, 1 - daylight);
+  scene.fog.color.copy(scene.background);
+}
+
+
+/* ---- Procedural pixel-art textures ----
+ * No external image files (CORS-safe from file://): each 16x16 face
+ * is painted pixel-by-pixel onto a <canvas>, wrapped in a
+ * CanvasTexture with NearestFilter so it renders crisp and blocky. */
+const TEX_SIZE = 16;
+
+function makeTexture(painter) {
+  const c = document.createElement('canvas');
+  c.width = c.height = TEX_SIZE;
+  painter(c.getContext('2d'));
+  const tex = new THREE.CanvasTexture(c);
+  tex.magFilter = THREE.NearestFilter;   // no smoothing when scaled up
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// Fill every pixel with a random pick from a palette (repeat entries
+// in a palette to weight them heavier).
+function speckle(ctx, palette) {
+  for (let x = 0; x < TEX_SIZE; x++)
+    for (let y = 0; y < TEX_SIZE; y++) {
+      ctx.fillStyle = palette[Math.floor(Math.random() * palette.length)];
+      ctx.fillRect(x, y, 1, 1);
+    }
+}
+
+// Wider 2x1 blotches on top of speckle give the chunkier look of
+// stone/bedrock in the reference textures.
+function blotch(ctx, palette, count) {
+  for (let i = 0; i < count; i++) {
+    ctx.fillStyle = palette[Math.floor(Math.random() * palette.length)];
+    ctx.fillRect(Math.floor(Math.random() * (TEX_SIZE - 1)), Math.floor(Math.random() * TEX_SIZE), 2, 1);
+  }
+}
+
+const DIRT_PALETTE    = ['#8a6a4a', '#79573b', '#9b7653', '#6b4a33', '#a58057', '#79573b', '#8a6a4a'];
+const GRASS_PALETTE   = ['#6aad48', '#5d9b3c', '#7bbf55', '#548c36', '#86c765', '#6aad48'];
+const STONE_PALETTE   = ['#8c8c8c', '#7d7d7d', '#999999', '#6e6e6e', '#a3a3a3', '#8c8c8c'];
+const BEDROCK_PALETTE = ['#1c1c1c', '#333333', '#575757', '#0e0e0e', '#6b6b6b', '#262626'];
+const SAND_PALETTE    = ['#e7dba0', '#dfd193', '#d6c887', '#efe5ae', '#cbbd7e'];
+
+function paintDirt(ctx) {
+  speckle(ctx, DIRT_PALETTE);
+  ctx.fillStyle = '#8d8f96';   // occasional grey pebbles, like real dirt
+  for (let i = 0; i < 6; i++)
+    ctx.fillRect(Math.floor(Math.random() * TEX_SIZE), Math.floor(Math.random() * TEX_SIZE), 1, 1);
+}
+
+function paintGrassTop(ctx) { speckle(ctx, GRASS_PALETTE); }
+
+function paintGrassSide(ctx) {
+  paintDirt(ctx);
+  // green fringe over the top edge with a jagged bottom border
+  for (let x = 0; x < TEX_SIZE; x++) {
+    const depth = 2 + Math.floor(Math.random() * 3);   // 2-4 px of grass
+    for (let y = 0; y < depth; y++) {
+      ctx.fillStyle = GRASS_PALETTE[Math.floor(Math.random() * GRASS_PALETTE.length)];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+}
+
+function paintStone(ctx)   { speckle(ctx, STONE_PALETTE);   blotch(ctx, STONE_PALETTE, 22); }
+function paintBedrock(ctx) { speckle(ctx, BEDROCK_PALETTE); blotch(ctx, BEDROCK_PALETTE, 26); }
+function paintSand(ctx)    { speckle(ctx, SAND_PALETTE); }
+
+/* ---- Ore textures: stone + fixed angular clusters, laid out like
+ * the classic MC ore sprites (same positions every load, shared by
+ * all ores — only the mineral palette changes). Within a blob the
+ * top-left pixels get the highlight, bottom-right the shadow. ---- */
+const ORE_CLUSTERS = [
+  [[2,2],[3,2],[1,3],[2,3],[3,3],[4,3],[2,4],[3,4]],
+  [[11,1],[12,1],[10,2],[11,2],[12,2],[13,2],[11,3],[12,3]],
+  [[4,9],[5,9],[3,10],[4,10],[5,10],[6,10],[4,11],[5,11]],
+  [[12,8],[13,8],[11,9],[12,9],[13,9],[12,10],[13,10]],
+  [[7,13],[8,13],[6,14],[7,14],[8,14],[9,14],[7,15],[8,15]],
+];
+function orePainter(pal) {
+  return (ctx) => {
+    paintStone(ctx);
+    for (const blob of ORE_CLUSTERS) {
+      const sums = blob.map(([x, y]) => x + y);
+      const lo = Math.min(...sums), hi = Math.max(...sums);
+      for (const [x, y] of blob) {
+        const s = x + y;
+        ctx.fillStyle = s <= lo + 1 ? pal.hi : s >= hi ? pal.d : pal.c;
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  };
+}
+const paintCoal       = orePainter({ c: '#2f2f31', hi: '#4e4e52', d: '#141416' });
+const paintCopperOre  = orePainter({ c: '#c06a43', hi: '#e59a71', d: '#8a4526' });
+const paintIronOre    = orePainter({ c: '#d8af93', hi: '#ecd0b6', d: '#af8265' });
+const paintGoldOre    = orePainter({ c: '#f7d84a', hi: '#fdf0a8', d: '#c79a1e' });
+const paintDiamondOre = orePainter({ c: '#63e8e0', hi: '#c5fffb', d: '#2fa89f' });
+
+const LEAF_PALETTE = ['#2d6a1e', '#3a7f28', '#255a18', '#468f33', '#1f4f13', '#2d6a1e'];
+function paintLeaves(ctx) { speckle(ctx, LEAF_PALETTE); }
+
+const BARK_PALETTE = ['#5d4526', '#6b512e', '#503a1f', '#75592f'];
+function paintLogSide(ctx) {
+  // vertical bark streaks: pick a shade per column, vary it down the column
+  for (let x = 0; x < TEX_SIZE; x++) {
+    const base = BARK_PALETTE[Math.floor(Math.random() * BARK_PALETTE.length)];
+    for (let y = 0; y < TEX_SIZE; y++) {
+      ctx.fillStyle = Math.random() < 0.15
+        ? BARK_PALETTE[Math.floor(Math.random() * BARK_PALETTE.length)] : base;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+}
+function paintLogTop(ctx) {
+  // concentric growth rings
+  const rings = ['#5d4526', '#a8814e', '#8a6a3d', '#c09c66', '#8a6a3d'];
+  for (let r = 0; r < rings.length; r++) {
+    ctx.fillStyle = rings[r];
+    ctx.fillRect(r + 1, r + 1, TEX_SIZE - 2 * (r + 1), TEX_SIZE - 2 * (r + 1));
+  }
+}
+
+// Round apple silhouette like the vanilla sprite: red body with a
+// dark outline, top-left shine, stem + leaf poking out the top.
+function appleShape(ctx, body, shine, dark) {
+  ctx.clearRect(0, 0, TEX_SIZE, TEX_SIZE);
+  const rows = [   // [y, x0, width] hand-drawn round body
+    [4, 5, 6], [5, 4, 9], [6, 3, 11], [7, 3, 11], [8, 3, 11],
+    [9, 3, 11], [10, 4, 9], [11, 4, 9], [12, 5, 3], [12, 9, 3],
+  ];
+  for (const [y, x0, w] of rows) { ctx.fillStyle = dark; ctx.fillRect(x0 - 1, y, w + 2, 1); }
+  for (const [y, x0, w] of rows) { ctx.fillStyle = body; ctx.fillRect(x0, y, w, 1); }
+  ctx.fillStyle = dark; ctx.fillRect(5, 13, 3, 1); ctx.fillRect(9, 13, 3, 1);   // bottom lobes
+  ctx.fillStyle = shine; ctx.fillRect(5, 5, 2, 3); ctx.fillRect(6, 4, 1, 1);    // shine
+  ctx.fillStyle = '#4a3018'; ctx.fillRect(7, 1, 2, 3);                          // stem
+  ctx.fillStyle = '#3a7f28'; ctx.fillRect(9, 2, 3, 2);                          // leaf
+}
+function paintApple(ctx)  { appleShape(ctx, '#c8281a', '#f2a48f', '#5e0f08'); }
+
+/* ---- New block faces + item icons (transparent-background) ---- */
+const I = (ctx, c, x, y, w = 1, h = 1) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
+const HANDLE_C = '#8a5a2b', WOOD_C = '#a8814e', STONE_C = '#8c8c8c';
+const IRON_C = '#d5d5de', IRON_D = '#9c9ca8';
+
+function paintCraftTop(ctx) {
+  paintWood(ctx);
+  I(ctx, '#5d4123', 0, 0, 16, 1); I(ctx, '#5d4123', 0, 15, 16, 1);   // rim
+  I(ctx, '#5d4123', 0, 0, 1, 16); I(ctx, '#5d4123', 15, 0, 1, 16);
+  I(ctx, '#5d4123', 3, 3, 10, 1); I(ctx, '#5d4123', 3, 12, 10, 1);   // work grid
+  I(ctx, '#5d4123', 3, 3, 1, 10); I(ctx, '#5d4123', 12, 3, 1, 10);
+  I(ctx, '#5d4123', 7, 3, 2, 10); I(ctx, '#5d4123', 3, 7, 10, 2);
+}
+function paintCraftSide(ctx) {
+  paintWood(ctx);
+  I(ctx, '#5d4123', 0, 0, 16, 2);                                    // tabletop edge
+  I(ctx, '#c9553a', 3, 5, 3, 4); I(ctx, IRON_D, 10, 5, 3, 4);        // tools on the side
+}
+
+// Item icon helpers: 16×16 transparent sprites in the classic MC
+// look — dark outline around a lit core, diagonal wooden handle.
+function iconOf(draw) { return (ctx) => { ctx.clearRect(0, 0, TEX_SIZE, TEX_SIZE); draw(ctx); }; }
+const MAT_WOOD    = { main: '#9a7a43', light: '#c9a06b', dark: '#4a3517' };
+const MAT_STONE   = { main: '#8f8f8f', light: '#c6c6c6', dark: '#4a4a4a' };
+const MAT_COPPER  = { main: '#c87533', light: '#e8a066', dark: '#5d3517' };
+const MAT_IRON    = { main: '#d8d8d8', light: '#ffffff', dark: '#565656' };
+const MAT_GOLD    = { main: '#f5d93f', light: '#fdf6b3', dark: '#8a6d1a' };
+const MAT_DIAMOND = { main: '#4aedd9', light: '#c6fef4', dark: '#1d7f74' };
+const TOOL_MATS = { wood: MAT_WOOD, stone: MAT_STONE, copper: MAT_COPPER,
+                    iron: MAT_IRON, gold: MAT_GOLD, diamond: MAT_DIAMOND };
+/* Tools are rasterized in rotated "tool space": u runs along the
+ * 45° handle (bottom-left → top-right), v is perpendicular to it.
+ * Shapes defined there come out clean and symmetric on the canvas —
+ * arcs, blades and tapers land exactly like the real MC sprites.
+ * A shade function maps (u,v) → [fillColor, outlineColor] | null;
+ * empty pixels touching a filled one get that fill's outline color. */
+function toolIcon(shade) {
+  return iconOf((ctx) => {
+    const grid = new Array(256).fill(null);
+    for (let y = 0; y < 16; y++)
+      for (let x = 0; x < 16; x++) {
+        const dx = x + 0.5 - 2, dy = 14 - (y + 0.5);       // origin at handle base
+        grid[y * 16 + x] = shade((dx + dy) * 0.7071, (dx - dy) * 0.7071);
+      }
+    for (let y = 0; y < 16; y++)
+      for (let x = 0; x < 16; x++) {
+        const g = grid[y * 16 + x];
+        if (g) { I(ctx, g[0], x, y, 1, 1); continue; }
+        for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + ax, ny = y + ay;
+          if (nx < 0 || nx > 15 || ny < 0 || ny > 15) continue;
+          const n = grid[ny * 16 + nx];
+          if (n) { I(ctx, n[1], x, y, 1, 1); break; }
+        }
+      }
+  });
+}
+
+const woodGrip = (v) => v < 0 ? '#a07c46' : '#7a5a2b';
+const handleAt = (u, v, len) =>
+  (u >= 0 && u <= len && Math.abs(v) <= 0.85) ? [woodGrip(v), '#3e2c14'] : null;
+
+// PICKAXE: symmetric arc perpendicular to the handle — tips at the
+// upper-left and lower-right, bow toward the top-right corner.
+const pickIcon = (m) => toolIcon((u, v) => {
+  const arc = 13 - 0.16 * v * v;
+  if (Math.abs(v) <= 6.5 && u <= arc && u >= arc - 1.8)
+    return [u > arc - 0.8 ? m.light : m.main, m.dark];
+  return handleAt(u, v, 11);
+});
+
+// AXE: blade hangs on one side with a convex cutting edge and a
+// beard notch by the handle; short poll on the back.
+const axeIcon = (m) => toolIcon((u, v) => {
+  if (u >= 8 && u <= 13) {
+    const edge = -5.4 + Math.max(0, Math.abs(u - 10.5) - 0.5) * 0.55;
+    const bearded = v > -1.2 && u < 8.8;                   // notch under the blade
+    const pollCap = v > 0.9 && (u < 9.4 || u > 12.2);      // keep the back poll short
+    if (v >= edge && v <= 1.6 && !bearded && !pollCap)
+      return [v < edge + 1.1 ? m.light : m.main, m.dark];
+  }
+  return handleAt(u, v, 10.5);
+});
+
+// SHOVEL: rounded scoop with a shoulder taper into the handle.
+const shovelIcon = (m) => toolIcon((u, v) => {
+  if (u >= 8.8 && u <= 14) {
+    let w = 2.5;
+    if (u > 12.4) w = 2.5 - (u - 12.4) * 1.1;              // rounded tip
+    if (u < 9.8) w = 1 + (u - 8.8) * 1.5;                  // shoulder
+    if (Math.abs(v) <= w) return [u > 12.6 || v < -1.4 ? m.light : m.main, m.dark];
+  }
+  return handleAt(u, v, 9.2);
+});
+
+// SWORD: straight tapered blade, bright leading edge, crossguard,
+// wrapped grip and pommel.
+const swordIcon = (m) => toolIcon((u, v) => {
+  let w = 1.0;
+  if (u > 12.6) w = Math.max(0, 1.0 - (u - 12.6) * 0.55);  // taper to the point
+  if (u >= 3.4 && u <= 14.4 && Math.abs(v) <= w)
+    return [v < -0.1 ? m.light : m.main, m.dark];
+  if (u >= 2.3 && u <= 3.4 && Math.abs(v) <= 2.7)          // crossguard
+    return ['#7a5a2b', '#3e2c14'];
+  if (u >= -0.6 && u < 2.3 && Math.abs(v) <= (u < 0.3 ? 1.2 : 0.8))
+    return [woodGrip(v), '#3e2c14'];                       // grip + pommel
+  return null;
+});
+
+// HOE: half a pickaxe arc — the blade hooks down on one side only.
+const hoeIcon = (m) => toolIcon((u, v) => {
+  const arc = 13 - 0.16 * v * v;
+  if (v >= -6.5 && v <= 0.6 && u <= arc && u >= arc - 1.6)
+    return [u > arc - 0.7 ? m.light : m.main, m.dark];
+  return handleAt(u, v, 11);
+});
+
+const paintStick = toolIcon((u, v) => handleAt(u, v, 9.5));
+/* ---- Material palettes: armor + ingots come in four tiers ---- */
+const PAL_IRON    = { c: '#d5d5de', d: '#9c9ca8', hi: '#f0f0f6' };
+const PAL_COPPER  = { c: '#c87533', d: '#8f5222', hi: '#e8a066' };
+const PAL_GOLD    = { c: '#f5d93f', d: '#c79a1e', hi: '#fdf3a3' };
+const PAL_DIAMOND = { c: '#4fe3cf', d: '#2aa898', hi: '#a8fff2' };
+const ARMOR_PALS  = { copper: PAL_COPPER, iron: PAL_IRON, gold: PAL_GOLD, diamond: PAL_DIAMOND };
+
+// MC-style ingot: a 3D bar — slanted bright top face, main front
+// face, darker base, all inside a dark outline.
+const ingotIcon = (p) => iconOf((ctx) => {
+  I(ctx, '#1c1208', 4, 4, 9, 1);  I(ctx, '#1c1208', 3, 5, 1, 1);      // outline top
+  I(ctx, '#1c1208', 13, 5, 1, 1); I(ctx, '#1c1208', 2, 6, 1, 5);
+  I(ctx, '#1c1208', 14, 6, 1, 5); I(ctx, '#1c1208', 3, 11, 12, 1);
+  I(ctx, p.hi, 4, 5, 9, 1); I(ctx, p.hi, 3, 6, 11, 1);                // slanted top face
+  I(ctx, p.c, 3, 7, 11, 3);                                           // front face
+  I(ctx, p.hi, 3, 7, 2, 1);                                           // corner glint
+  I(ctx, p.d, 3, 10, 11, 1);                                          // base shadow
+});
+// MC-style diamond: faceted gem, dark outline, white sparkle.
+const gemIcon = (p) => iconOf((ctx) => {
+  for (let dy = -5; dy <= 5; dy++) {
+    const w = 5 - Math.abs(dy);
+    I(ctx, '#123a36', 8 - w - 1, 8 + dy, w * 2 + 3, 1);                // outline pass
+  }
+  for (let dy = -4; dy <= 4; dy++) {
+    const w = 4 - Math.abs(dy);
+    I(ctx, p.c, 8 - w, 8 + dy, w * 2 + 1, 1);
+  }
+  I(ctx, '#eafffb', 6, 5, 2, 2); I(ctx, p.hi, 5, 7, 2, 1);            // sparkle
+  I(ctx, p.d, 8, 10, 2, 2); I(ctx, p.d, 10, 8, 1, 2);                 // lower facets
+});
+const helmetIcon = (p) => iconOf((ctx) => {
+  I(ctx, p.c, 5, 3, 6, 2); I(ctx, p.c, 4, 5, 8, 2); I(ctx, p.c, 3, 7, 3, 4); I(ctx, p.c, 10, 7, 3, 4);
+  I(ctx, p.d, 4, 6, 8, 1); });
+const chestIcon = (p) => iconOf((ctx) => {
+  I(ctx, p.c, 2, 3, 3, 5); I(ctx, p.c, 11, 3, 3, 5);                 // shoulders/arms
+  I(ctx, p.c, 4, 4, 8, 9); I(ctx, p.d, 7, 6, 2, 5); });
+const legsIcon = (p) => iconOf((ctx) => {
+  I(ctx, p.c, 4, 3, 8, 3); I(ctx, p.c, 4, 6, 3, 8); I(ctx, p.c, 9, 6, 3, 8); });
+const bootsIcon = (p) => iconOf((ctx) => {
+  I(ctx, p.c, 4, 6, 3, 5); I(ctx, p.c, 10, 6, 3, 5); I(ctx, p.c, 3, 11, 4, 2); I(ctx, p.c, 10, 11, 4, 2); });
+
+/* ---- New drops + ore faces ---- */
+const featherIcon = iconOf((ctx) => {
+  for (let i = 0; i < 8; i++) I(ctx, '#f2f2ee', 4 + i, 10 - i, 3, 2);
+  for (let i = 0; i < 10; i++) I(ctx, '#9a9a92', 3 + i, 12 - i, 1, 1);   // shaft
+});
+const chickenMeatIcon = iconOf((ctx) => {   // whole raw bird, vanilla-style
+  I(ctx, '#c98b78', 4, 5, 8, 6);  I(ctx, '#e8b39a', 4, 5, 8, 2);         // pink body + lighter back
+  I(ctx, '#c98b78', 3, 6, 1, 3);  I(ctx, '#c98b78', 12, 6, 1, 3);        // rounded flanks
+  I(ctx, '#e8b39a', 5, 3, 4, 2);                                         // neck stump
+  I(ctx, '#d89b82', 5, 11, 2, 3); I(ctx, '#d89b82', 9, 11, 2, 3);        // drumstick legs
+  I(ctx, '#f6ede0', 5, 14, 2, 1); I(ctx, '#f6ede0', 9, 14, 2, 1);        // leg bone ends
+});
+const lambMeatIcon = iconOf((ctx) => {
+  I(ctx, '#c94d4d', 3, 4, 8, 8);                                         // red chop
+  I(ctx, '#e88a8a', 4, 5, 4, 3);                                         // marbling
+  I(ctx, '#f2e9dc', 11, 4, 2, 8);                                        // bone strip
+});
+const WOOL_PALETTE = ['#e9e7e2', '#dedbd4', '#f2f0ea', '#d5d2c9', '#e9e7e2'];
+function paintWool(ctx) { speckle(ctx, WOOL_PALETTE); }
+const paintShield = iconOf((ctx) => {
+  I(ctx, '#7a5a2f', 3, 2, 10, 8); I(ctx, '#7a5a2f', 4, 10, 8, 2); I(ctx, '#7a5a2f', 6, 12, 4, 2); I(ctx, '#7a5a2f', 7, 14, 2, 1);
+  I(ctx, '#5d4123', 3, 2, 10, 1); I(ctx, IRON_C, 7, 5, 2, 2); });
+
+function paintWood(ctx) {
+  speckle(ctx, ['#b8945f', '#ab854e', '#a17c46', '#c09c66']);
+  ctx.fillStyle = '#7a5c33';   // plank seams
+  for (let y = 3; y < TEX_SIZE; y += 4) ctx.fillRect(0, y, TEX_SIZE, 1);
+}
+
+/* ---- Furnace / smoker / chest / jukebox block faces ---- */
+const FURN_PAL = ['#8c8c8c', '#7f7f7f', '#969696', '#767676'];
+function paintFurnaceSide(ctx) {
+  speckle(ctx, FURN_PAL);
+  I(ctx, '#5a5a5a', 0, 0, 16, 1); I(ctx, '#5a5a5a', 0, 15, 16, 1);   // frame
+  I(ctx, '#5a5a5a', 0, 0, 1, 16); I(ctx, '#5a5a5a', 15, 0, 1, 16);
+  I(ctx, '#101010', 4, 9, 8, 6);                                     // mouth to the floor
+  I(ctx, '#3a3a3a', 4, 8, 8, 1);                                     // lintel
+}
+function paintFurnaceTop(ctx) {
+  speckle(ctx, FURN_PAL);
+  I(ctx, '#5a5a5a', 0, 0, 16, 1); I(ctx, '#5a5a5a', 0, 15, 16, 1);
+  I(ctx, '#5a5a5a', 0, 0, 1, 16); I(ctx, '#5a5a5a', 15, 0, 1, 16);
+  I(ctx, '#6e6e6e', 3, 3, 10, 10);
+}
+function paintSmokerSide(ctx) {
+  speckle(ctx, ['#6e5a44', '#7a664e', '#615039', '#846f55']);        // smoked wood body
+  I(ctx, '#3c2f20', 0, 0, 16, 1); I(ctx, '#3c2f20', 0, 15, 16, 1);
+  I(ctx, '#3c2f20', 0, 0, 1, 16); I(ctx, '#3c2f20', 15, 0, 1, 16);
+  I(ctx, '#101010', 4, 8, 8, 6);                                     // mouth
+  I(ctx, '#e88a2a', 5, 12, 6, 2); I(ctx, '#ffc65c', 6, 12, 4, 1);    // embers
+}
+function paintChestSide(ctx) {
+  speckle(ctx, ['#b8945f', '#ab854e', '#a17c46', '#c09c66']);        // oak body
+  I(ctx, '#6b4d2a', 0, 0, 16, 1); I(ctx, '#6b4d2a', 0, 15, 16, 1);   // frame
+  I(ctx, '#6b4d2a', 0, 0, 1, 16); I(ctx, '#6b4d2a', 15, 0, 1, 16);
+  I(ctx, '#6b4d2a', 0, 6, 16, 1);                                    // lid seam
+  I(ctx, '#9a9aa2', 7, 5, 2, 4); I(ctx, '#55555c', 7, 8, 2, 1);      // latch
+}
+function paintChestTop(ctx) {
+  speckle(ctx, ['#b8945f', '#ab854e', '#a17c46', '#c09c66']);
+  I(ctx, '#6b4d2a', 0, 0, 16, 1); I(ctx, '#6b4d2a', 0, 15, 16, 1);
+  I(ctx, '#6b4d2a', 0, 0, 1, 16); I(ctx, '#6b4d2a', 15, 0, 1, 16);
+  I(ctx, '#9a9aa2', 7, 0, 2, 3);                                     // latch tab
+}
+function paintJukeboxSide(ctx) {
+  speckle(ctx, ['#6b4a30', '#7a5638', '#5d3f28', '#84603e']);        // dark wood
+  I(ctx, '#3a2718', 0, 0, 16, 2); I(ctx, '#3a2718', 0, 14, 16, 2);
+  I(ctx, '#c9a15f', 4, 6, 8, 4); I(ctx, '#3a2718', 6, 7, 4, 2);      // record slot
+}
+function paintJukeboxTop(ctx) {
+  speckle(ctx, ['#6b4a30', '#7a5638', '#5d3f28', '#84603e']);
+  I(ctx, '#1a1a1a', 4, 4, 8, 8); I(ctx, '#3a3a3a', 6, 6, 4, 4);      // record
+  I(ctx, '#c9a15f', 7, 7, 2, 2);                                     // label
+}
+
+/* ---- Transparent / cross-rendered block faces ---- */
+function paintGlass(ctx) {
+  ctx.clearRect(0, 0, TEX_SIZE, TEX_SIZE);
+  I(ctx, '#e8f4f8', 0, 0, 16, 1); I(ctx, '#e8f4f8', 0, 15, 16, 1);   // frame
+  I(ctx, '#e8f4f8', 0, 0, 1, 16); I(ctx, '#e8f4f8', 15, 0, 1, 16);
+  I(ctx, '#cfe6ef', 1, 1, 1, 1);  I(ctx, '#cfe6ef', 14, 14, 1, 1);
+  for (let i = 0; i < 5; i++) I(ctx, '#dceef5', 10 - i, 3 + i, 1, 1); // streak
+  for (let i = 0; i < 3; i++) I(ctx, '#dceef5', 12 - i, 2 + i, 1, 1);
+}
+function paintIronBars(ctx) {
+  ctx.clearRect(0, 0, TEX_SIZE, TEX_SIZE);
+  I(ctx, '#8a8a92', 0, 0, 16, 1); I(ctx, '#8a8a92', 0, 15, 16, 1);   // rails
+  for (const x of [1, 5, 9, 13]) { I(ctx, '#b8b8c0', x, 0, 1, 16); I(ctx, '#6e6e76', x + 1, 1, 1, 14); }
+}
+function paintTorch(ctx) {
+  ctx.clearRect(0, 0, TEX_SIZE, TEX_SIZE);
+  I(ctx, '#7a5a2b', 7, 6, 2, 10); I(ctx, '#9a7a43', 7, 6, 1, 10);    // stick
+  I(ctx, '#ffdd55', 7, 3, 2, 3);  I(ctx, '#ff9a1f', 7, 5, 2, 1);     // flame over coal tip
+  I(ctx, '#fff6c2', 7, 3, 1, 1);
+}
+function paintLadder(ctx) {
+  ctx.clearRect(0, 0, TEX_SIZE, TEX_SIZE);
+  I(ctx, '#9a7a43', 2, 0, 2, 16); I(ctx, '#9a7a43', 12, 0, 2, 16);   // rails
+  I(ctx, '#7a5c33', 3, 0, 1, 16); I(ctx, '#7a5c33', 13, 0, 1, 16);
+  for (const y of [1, 5, 9, 13]) { I(ctx, '#b8945f', 4, y, 8, 2); I(ctx, '#7a5c33', 4, y + 1, 8, 1); }
+}
+
+/* ---- Icons for the new items ---- */
+const coalLump = (c, hi, d) => iconOf((ctx) => {
+  I(ctx, d, 4, 4, 9, 8); I(ctx, d, 6, 3, 6, 10); I(ctx, d, 3, 6, 11, 5);
+  I(ctx, c, 5, 5, 7, 6); I(ctx, c, 7, 4, 4, 8);
+  I(ctx, hi, 6, 5, 3, 2); I(ctx, hi, 9, 7, 2, 1);
+});
+const coalIcon     = coalLump('#2a2a2e', '#4e4e56', '#131316');
+const charcoalIcon = coalLump('#38302a', '#5d5148', '#1a1512');
+const goldenAppleIcon = (ctx) => appleShape(ctx, '#f0c435', '#fdf3a3', '#8a6d1a');
+const cookedChickenIcon = iconOf((ctx) => {   // same bird, roasted brown
+  I(ctx, '#a8672c', 4, 5, 8, 6);  I(ctx, '#cf9048', 4, 5, 8, 2);
+  I(ctx, '#a8672c', 3, 6, 1, 3);  I(ctx, '#a8672c', 12, 6, 1, 3);
+  I(ctx, '#cf9048', 5, 3, 4, 2);
+  I(ctx, '#8a5222', 5, 11, 2, 3); I(ctx, '#8a5222', 9, 11, 2, 3);
+  I(ctx, '#f6ede0', 5, 14, 2, 1); I(ctx, '#f6ede0', 9, 14, 2, 1);
+});
+const cookedLambIcon = iconOf((ctx) => {
+  I(ctx, '#8a4a26', 3, 4, 8, 8); I(ctx, '#b5722e', 4, 5, 4, 3);      // seared chop
+  I(ctx, '#f2e9dc', 11, 4, 2, 8);                                    // bone strip
+});
+const bowlIcon = iconOf((ctx) => {
+  I(ctx, '#7a5a2f', 3, 8, 10, 3); I(ctx, '#7a5a2f', 5, 11, 6, 2);
+  I(ctx, '#9a7a43', 4, 8, 8, 1); I(ctx, '#4a3517', 3, 8, 1, 3); I(ctx, '#4a3517', 12, 8, 1, 3);
+});
+const bedIcon = iconOf((ctx) => {
+  I(ctx, '#8a8a8a', 2, 11, 2, 3); I(ctx, '#8a8a8a', 12, 11, 2, 3);   // legs
+  I(ctx, '#a03030', 2, 8, 12, 3); I(ctx, '#c94040', 2, 8, 12, 1);    // blanket
+  I(ctx, '#f2f0ea', 2, 6, 4, 2); I(ctx, '#d5d2c9', 2, 7, 4, 1);      // pillow
+  I(ctx, '#7a5a2f', 2, 11, 12, 1);                                   // frame
+});
+const signIcon = iconOf((ctx) => {
+  I(ctx, '#b8945f', 2, 3, 12, 7); I(ctx, '#7a5c33', 2, 3, 12, 1); I(ctx, '#7a5c33', 2, 9, 12, 1);
+  I(ctx, '#7a5c33', 4, 5, 8, 1); I(ctx, '#7a5c33', 4, 7, 6, 1);      // "text"
+  I(ctx, '#9a7a43', 7, 10, 2, 5);                                    // post
+});
+const boatIcon = iconOf((ctx) => {
+  I(ctx, '#9a7a43', 2, 7, 2, 4); I(ctx, '#9a7a43', 12, 7, 2, 4);     // bow + stern
+  I(ctx, '#b8945f', 3, 9, 10, 3); I(ctx, '#7a5c33', 4, 8, 8, 1);     // hull
+});
+const minecartIcon = iconOf((ctx) => {
+  I(ctx, '#8a8a92', 2, 6, 12, 6); I(ctx, '#3a3a3e', 4, 7, 8, 3);     // cart + inside
+  I(ctx, '#55555c', 3, 12, 3, 2); I(ctx, '#55555c', 10, 12, 3, 2);   // wheels
+});
+const chestMinecartIcon = iconOf((ctx) => {
+  I(ctx, '#8a8a92', 2, 8, 12, 5); I(ctx, '#55555c', 3, 13, 3, 2); I(ctx, '#55555c', 10, 13, 3, 2);
+  I(ctx, '#b8945f', 3, 3, 10, 6); I(ctx, '#6b4d2a', 3, 5, 10, 1);    // chest on top
+  I(ctx, '#9a9aa2', 7, 4, 2, 2);
+});
+const chestBoatIcon = iconOf((ctx) => {
+  I(ctx, '#9a7a43', 2, 9, 2, 4); I(ctx, '#9a7a43', 12, 9, 2, 4);
+  I(ctx, '#b8945f', 3, 10, 10, 3);
+  I(ctx, '#a8854e', 4, 4, 8, 6); I(ctx, '#6b4d2a', 4, 6, 8, 1);      // chest
+  I(ctx, '#9a9aa2', 7, 5, 2, 2);
+});
+const hopperIcon = iconOf((ctx) => {
+  I(ctx, '#55555c', 2, 3, 12, 4); I(ctx, '#3a3a3e', 3, 4, 10, 2);    // funnel bowl
+  I(ctx, '#55555c', 5, 7, 6, 3); I(ctx, '#55555c', 7, 10, 2, 3);     // spout
+});
+const trappedChestIcon = iconOf((ctx) => {
+  I(ctx, '#b8945f', 2, 3, 12, 10); I(ctx, '#6b4d2a', 2, 3, 12, 1); I(ctx, '#6b4d2a', 2, 12, 12, 1);
+  I(ctx, '#6b4d2a', 2, 7, 12, 1); I(ctx, '#9a9aa2', 7, 6, 2, 3);
+  I(ctx, '#c93a2a', 6, 9, 4, 1);                                     // red tripwire seam
+});
+const railsIcon = iconOf((ctx) => {
+  for (const y of [2, 6, 10, 14]) I(ctx, '#7a5a2f', 2, y, 12, 1);    // ties
+  I(ctx, '#b8b8c0', 4, 0, 2, 16); I(ctx, '#b8b8c0', 10, 0, 2, 16);   // rails
+  I(ctx, '#6e6e76', 5, 0, 1, 16); I(ctx, '#6e6e76', 11, 0, 1, 16);
+});
+const bucketIcon = iconOf((ctx) => {
+  I(ctx, '#8a8a92', 4, 5, 8, 1);                                     // rim
+  I(ctx, '#b8b8c0', 4, 6, 8, 6); I(ctx, '#8a8a92', 5, 12, 6, 1);     // body
+  for (let i = 0; i < 3; i++) { I(ctx, '#d8d8de', 5 + i, 3 - i + 2, 1, 1); I(ctx, '#d8d8de', 10 - i, 3 - i + 2, 1, 1); }
+});
+const shearsIcon = iconOf((ctx) => {
+  for (let i = 0; i < 6; i++) { I(ctx, '#c6c6ce', 4 + i, 9 - i, 2, 2); I(ctx, '#c6c6ce', 10 - i, 9 - i, 2, 2); }
+  I(ctx, '#8a3a2a', 3, 11, 3, 3); I(ctx, '#8a3a2a', 10, 11, 3, 3);   // handles
+});
+const cauldronIcon = iconOf((ctx) => {
+  I(ctx, '#3a3a3e', 3, 4, 10, 8); I(ctx, '#55555c', 3, 4, 10, 2);    // pot
+  I(ctx, '#3a3a3e', 2, 12, 3, 3); I(ctx, '#3a3a3e', 11, 12, 3, 3);   // legs
+  I(ctx, '#1a1a1e', 5, 6, 6, 4);                                     // hollow
+});
+const glassBottleIcon = iconOf((ctx) => {
+  I(ctx, '#cfe6ef', 6, 2, 4, 2); I(ctx, '#cfe6ef', 7, 4, 2, 2);      // cork + neck
+  I(ctx, '#dceef5', 5, 6, 6, 7); I(ctx, '#eef8fc', 6, 7, 2, 3);      // body + shine
+});
+const tripwireHookIcon = iconOf((ctx) => {
+  I(ctx, '#b8b8c0', 6, 2, 4, 3); I(ctx, '#8a8a92', 7, 3, 2, 1);      // hook plate
+  I(ctx, '#9a7a43', 7, 5, 2, 6);                                     // stick
+  I(ctx, '#b8945f', 5, 11, 6, 3);                                    // plank base
+});
+const paintingIcon = iconOf((ctx) => {
+  I(ctx, '#7a5a2f', 2, 2, 12, 12); I(ctx, '#9a7a43', 3, 3, 10, 10);  // frame
+  I(ctx, '#7ec8e8', 4, 4, 8, 4); I(ctx, '#5d9b3c', 4, 8, 8, 4);      // sky + hills
+  I(ctx, '#f5d93f', 10, 5, 2, 2);                                    // sun
+});
+const lightningRodIcon = iconOf((ctx) => {
+  I(ctx, '#c87533', 7, 4, 2, 10); I(ctx, '#e8a066', 7, 4, 1, 10);    // rod
+  I(ctx, '#e8a066', 6, 1, 4, 3); I(ctx, '#8f5222', 6, 3, 4, 1);      // tip
+});
+const brushIcon = iconOf((ctx) => {
+  I(ctx, '#f2f2ee', 5, 1, 6, 4); I(ctx, '#d8d8ce', 5, 4, 6, 1);      // bristles
+  I(ctx, '#c87533', 6, 5, 4, 2);                                     // copper ferrule
+  I(ctx, '#9a7a43', 7, 7, 2, 8);                                     // handle
+});
+const stonecutterIcon = iconOf((ctx) => {
+  I(ctx, '#8c8c8c', 2, 9, 12, 5); I(ctx, '#6e6e6e', 2, 9, 12, 1);    // stone base
+  for (let i = 0; i < 8; i++) I(ctx, i % 2 ? '#c6c6ce' : '#8a8a92', 4 + i, 5 + (i % 2), 1, 4);   // saw blade
+});
+const smithingTableIcon = iconOf((ctx) => {
+  I(ctx, '#3a3f4a', 2, 4, 12, 4); I(ctx, '#565c6a', 2, 4, 12, 1);    // iron top
+  I(ctx, '#6b4d2a', 3, 8, 3, 7); I(ctx, '#6b4d2a', 10, 8, 3, 7);     // legs
+  I(ctx, '#c6c6ce', 5, 5, 2, 1); I(ctx, '#c87533', 9, 6, 2, 1);      // tools
+});
+const campfireIcon = iconOf((ctx) => {
+  I(ctx, '#5d4526', 2, 12, 12, 2); I(ctx, '#75592f', 2, 10, 12, 2);  // log pile
+  I(ctx, '#ff9a1f', 6, 5, 4, 5); I(ctx, '#ffdd55', 7, 3, 2, 5);      // flame
+  I(ctx, '#fff6c2', 7, 6, 1, 2);
+});
+
+/* ---- Bed block faces (half-height; sleep at night) ---- */
+function paintBedTop(ctx) {
+  speckle(ctx, ['#a03030', '#93282a', '#ad3a38']);                   // red blanket
+  I(ctx, '#f2f0ea', 0, 0, 16, 5); I(ctx, '#d5d2c9', 0, 4, 16, 1);    // pillow end
+  I(ctx, '#7c2020', 0, 6, 16, 1);                                    // blanket fold
+}
+function paintBedSide(ctx) {
+  I(ctx, '#8a6a42', 0, 10, 16, 6);                                   // wood base
+  I(ctx, '#6b4d2a', 0, 15, 16, 1);
+  speckle2 : {                                                       // blanket band
+    for (let x = 0; x < 16; x++) for (let y = 4; y < 10; y++) {
+      ctx.fillStyle = ['#a03030', '#93282a', '#ad3a38'][(x * 7 + y * 3) % 3];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  I(ctx, '#f2f0ea', 0, 4, 4, 6);                                     // pillow corner
+  ctx.clearRect(0, 0, 16, 4);                                        // open top (half block)
+}
+
+/* ---- Hostile mob drop icons ---- */
+const rottenFleshIcon = iconOf((ctx) => {
+  I(ctx, '#7a5a38', 3, 4, 10, 8); I(ctx, '#5d8a42', 4, 5, 4, 3);     // brown meat + green rot
+  I(ctx, '#5d8a42', 9, 8, 3, 3); I(ctx, '#93683e', 8, 4, 4, 2);
+  I(ctx, '#4a3520', 3, 11, 10, 1);
+});
+const boneIcon = iconOf((ctx) => {
+  for (let i = 0; i < 7; i++) I(ctx, '#ececdf', 4 + i, 10 - i, 2, 2);   // diagonal shaft
+  I(ctx, '#f6f6ec', 3, 10, 3, 3); I(ctx, '#f6f6ec', 2, 9, 2, 2);        // knuckle ends
+  I(ctx, '#f6f6ec', 10, 3, 3, 3); I(ctx, '#f6f6ec', 12, 2, 2, 2);
+});
+const stringIcon = iconOf((ctx) => {
+  for (let i = 0; i < 10; i++) I(ctx, '#e8e8e0', 3 + i, 3 + i * 0.9 | 0, 1, 2);   // loose thread
+  I(ctx, '#e8e8e0', 3, 3, 2, 1); I(ctx, '#cfcfc4', 12, 12, 2, 2);
+});
+const gunpowderIcon = iconOf((ctx) => {
+  I(ctx, '#4a4a4a', 4, 9, 8, 4); I(ctx, '#5d5d5d', 5, 7, 6, 3);      // grey powder pile
+  I(ctx, '#6e6e6e', 6, 6, 4, 2); I(ctx, '#3a3a3a', 4, 12, 8, 1);
+  I(ctx, '#8a8a8a', 6, 7, 2, 1);
+});
+const arrowIcon = iconOf((ctx) => {
+  for (let i = 0; i < 6; i++) I(ctx, '#8a6a3d', 5 + i, 10 - i, 1, 1);   // shaft
+  I(ctx, '#c6c6ce', 11, 3, 3, 3); I(ctx, '#e8e8f0', 12, 3, 2, 2);      // flint tip
+  I(ctx, '#f2f2ee', 3, 11, 2, 3); I(ctx, '#f2f2ee', 4, 12, 2, 2);      // feathers
+});
+const bowIcon = iconOf((ctx) => {
+  for (let i = 0; i < 5; i++) { I(ctx, '#6b4d2a', 4 + i, 3 + i, 2, 1); I(ctx, '#6b4d2a', 4 + i, 13 - i, 2, 1); }
+  I(ctx, '#6b4d2a', 9, 7, 2, 3);                                     // grip
+  I(ctx, '#e8e8e0', 3, 3, 1, 11);                                    // string
+});
+
+// Per-type face painters: top / side / bottom.
+const same = (p) => ({ top: p, side: p, bottom: p });
+const TEXTURE_PAINTERS = {
+  bedrock:  same(paintBedrock),
+  grass:    { top: paintGrassTop, side: paintGrassSide, bottom: paintDirt },
+  dirt:     same(paintDirt),
+  stone:    same(paintStone),
+  coal_ore:    same(paintCoal),
+  copper_ore:  same(paintCopperOre),
+  iron_ore:    same(paintIronOre),
+  gold_ore:    same(paintGoldOre),
+  diamond_ore: same(paintDiamondOre),
+  wool:     same(paintWool),
+  wood:     same(paintWood),
+  log:      { top: paintLogTop, side: paintLogSide, bottom: paintLogTop },
+  leaves:   same(paintLeaves),
+  sand:     same(paintSand),
+  crafting: { top: paintCraftTop, side: paintCraftSide, bottom: paintWood },
+  furnace:  { top: paintFurnaceTop, side: paintFurnaceSide, bottom: paintFurnaceTop },
+  smoker:   { top: paintFurnaceTop, side: paintSmokerSide, bottom: paintFurnaceTop },
+  chest:    { top: paintChestTop, side: paintChestSide, bottom: paintChestTop },
+  jukebox:  { top: paintJukeboxTop, side: paintJukeboxSide, bottom: paintJukeboxSide },
+  glass:      same(paintGlass),
+  glass_pane: same(paintGlass),
+  iron_bars:  same(paintIronBars),
+  torch:      same(paintTorch),
+  ladder:     same(paintLadder),
+  bed:        { top: paintBedTop, side: paintBedSide, bottom: paintWood },
+  apple:          same(paintApple),
+  golden_apple:   same(goldenAppleIcon),
+  chicken_meat:   same(chickenMeatIcon),
+  lamb_meat:      same(lambMeatIcon),
+  cooked_chicken: same(cookedChickenIcon),
+  cooked_lamb:    same(cookedLambIcon),
+  feather:  same(featherIcon),
+  rotten_flesh: same(rottenFleshIcon),
+  bone:      same(boneIcon),
+  string:    same(stringIcon),
+  gunpowder: same(gunpowderIcon),
+  arrow:     same(arrowIcon),
+  bow:       same(bowIcon),
+  stick:    same(paintStick),
+  coal:     same(coalIcon),
+  charcoal: same(charcoalIcon),
+  copper:   same(ingotIcon(PAL_COPPER)),
+  iron:     same(ingotIcon(PAL_IRON)),
+  gold:     same(ingotIcon(PAL_GOLD)),
+  diamond:  same(gemIcon(PAL_DIAMOND)),
+  shield:   same(paintShield),
+  bowl:           same(bowlIcon),
+  bed:            same(bedIcon),
+  sign:           same(signIcon),
+  boat:           same(boatIcon),
+  chest_boat:     same(chestBoatIcon),
+  minecart:       same(minecartIcon),
+  chest_minecart: same(chestMinecartIcon),
+  hopper:         same(hopperIcon),
+  trapped_chest:  same(trappedChestIcon),
+  rails:          same(railsIcon),
+  bucket:         same(bucketIcon),
+  shears:         same(shearsIcon),
+  cauldron:       same(cauldronIcon),
+  glass_bottle:   same(glassBottleIcon),
+  tripwire_hook:  same(tripwireHookIcon),
+  painting:       same(paintingIcon),
+  lightning_rod:  same(lightningRodIcon),
+  brush:          same(brushIcon),
+  stonecutter:    same(stonecutterIcon),
+  smithing_table: same(smithingTableIcon),
+  campfire:       same(campfireIcon),
+};
+// tool icons for all six material tiers
+for (const [mat, m] of Object.entries(TOOL_MATS)) {
+  TEXTURE_PAINTERS[mat + '_pick']   = same(pickIcon(m));
+  TEXTURE_PAINTERS[mat + '_axe']    = same(axeIcon(m));
+  TEXTURE_PAINTERS[mat + '_shovel'] = same(shovelIcon(m));
+  TEXTURE_PAINTERS[mat + '_hoe']    = same(hoeIcon(m));
+  TEXTURE_PAINTERS[mat + '_sword']  = same(swordIcon(m));
+}
+// tiered armor icons, tinted per material palette
+for (const [mat, pal] of Object.entries(ARMOR_PALS)) {
+  TEXTURE_PAINTERS[mat + '_helmet']     = same(helmetIcon(pal));
+  TEXTURE_PAINTERS[mat + '_chestplate'] = same(chestIcon(pal));
+  TEXTURE_PAINTERS[mat + '_leggings']   = same(legsIcon(pal));
+  TEXTURE_PAINTERS[mat + '_boots']      = same(bootsIcon(pal));
+}
+
+// BoxGeometry material order: +x, -x, +y (top), -y (bottom), +z, -z
+const materialCache = {};
+function materialsFor(type) {
+  if (!materialCache[type]) {
+    const p = TEXTURE_PAINTERS[type];
+    const m = (painter) => new THREE.MeshLambertMaterial({ map: makeTexture(painter) });
+    const side = m(p.side);   // one shared side material for all 4 sides
+    materialCache[type] = [side, side, m(p.top), m(p.bottom), side, side];
+  }
+  return materialCache[type];
+}
+
+const NEIGHBORS = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+
+/* ---- Texture atlas ----
+ * All block faces are packed into one canvas so every chunk renders
+ * with a single material/texture (1 draw call per chunk). Individual
+ * per-type materials (materialsFor) remain for drops/hand/thumbnails. */
+const ATLAS_COLS = 8;
+const FACE_KINDS = ['top', 'side', 'bottom'];
+const FACE_TILE = {};   // block id -> { top, side, bottom } tile index
+let atlasMaterial, ATLAS_W, ATLAS_H;
+
+(function buildAtlas() {
+  const types = TYPE_OF.slice(1);
+  const rows = Math.ceil((types.length * 3) / ATLAS_COLS);
+  const cvs = document.createElement('canvas');
+  cvs.width = ATLAS_W = ATLAS_COLS * TEX_SIZE;
+  cvs.height = ATLAS_H = rows * TEX_SIZE;
+  const ctx = cvs.getContext('2d');
+  let t = 0;
+  for (const type of types) {
+    const rec = {};
+    for (const kind of FACE_KINDS) {
+      ctx.save();
+      ctx.translate((t % ATLAS_COLS) * TEX_SIZE, Math.floor(t / ATLAS_COLS) * TEX_SIZE);
+      TEXTURE_PAINTERS[type][kind](ctx);
+      ctx.restore();
+      rec[kind] = t++;
+    }
+    FACE_TILE[ID_OF[type]] = rec;
+  }
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.magFilter = tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  // alphaTest clips the transparent pixels of glass/torch/ladder tiles;
+  // DoubleSide so sprite crosses are visible from both directions.
+  atlasMaterial = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide });
+})();
+
+/* ---- Streaming chunk meshes ----
+ * Each generated chunk gets ONE merged BufferGeometry of its exposed
+ * faces. Chunks stream in around the player (data first, then mesh),
+ * and are evicted — mesh disposed, data dropped — when left behind. */
+
+// Quad corners per face; triangles (0,1,2)(2,1,3) wind outward.
+const FACES = [
+  { dir: [ 1, 0, 0], kind: 'side',   c: [[1,0,1],[1,0,0],[1,1,1],[1,1,0]] },
+  { dir: [-1, 0, 0], kind: 'side',   c: [[0,0,0],[0,0,1],[0,1,0],[0,1,1]] },
+  { dir: [ 0, 1, 0], kind: 'top',    c: [[0,1,1],[1,1,1],[0,1,0],[1,1,0]] },
+  { dir: [ 0,-1, 0], kind: 'bottom', c: [[0,0,0],[1,0,0],[0,0,1],[1,0,1]] },
+  { dir: [ 0, 0, 1], kind: 'side',   c: [[0,0,1],[1,0,1],[0,1,1],[1,1,1]] },
+  { dir: [ 0, 0,-1], kind: 'side',   c: [[1,0,0],[0,0,0],[1,1,0],[0,1,0]] },
+];
+
+function buildChunkMesh(cx, cz) {
+  const ch = chunks.get(chunkKey(cx, cz));
+  if (!ch) return;
+  const dSelf = ch.data;
+  const dE = chunks.get(chunkKey(cx + 1, cz))?.data ?? null;
+  const dW = chunks.get(chunkKey(cx - 1, cz))?.data ?? null;
+  const dS = chunks.get(chunkKey(cx, cz + 1))?.data ?? null;
+  const dN = chunks.get(chunkKey(cx, cz - 1))?.data ?? null;
+  // solid lookup spanning one cell into neighbor chunks (face checks
+  // only ever go one step off-chunk on a single axis)
+  const idAt = (lx, y, lz) => {
+    if (y < 0 || y >= WORLD_HEIGHT) return 0;
+    if (lx < 0)      return dW ? dW[cellIndex(CHUNK - 1, y, lz)] : 0;
+    if (lx >= CHUNK) return dE ? dE[cellIndex(0, y, lz)] : 0;
+    if (lz < 0)      return dN ? dN[cellIndex(lx, y, CHUNK - 1)] : 0;
+    if (lz >= CHUNK) return dS ? dS[cellIndex(lx, y, 0)] : 0;
+    return dSelf[cellIndex(lx, y, lz)];
+  };
+
+  const x0 = cx * CHUNK, z0 = cz * CHUNK;
+  const pos = [], norm = [], uv = [], index = [];
+  let v = 0;
+  const yTop = Math.min(ch.maxY, WORLD_HEIGHT);
+
+  // Full-texel UVs for a tile (half-texel inset against bleeding).
+  const tileUV = (t) => {
+    const tpx = (t % ATLAS_COLS) * TEX_SIZE, tpy = Math.floor(t / ATLAS_COLS) * TEX_SIZE;
+    const u0 = (tpx + 0.5) / ATLAS_W, u1 = (tpx + TEX_SIZE - 0.5) / ATLAS_W;
+    const v1 = 1 - (tpy + 0.5) / ATLAS_H, v0 = 1 - (tpy + TEX_SIZE - 0.5) / ATLAS_H;
+    return [u0, u1, v0, v1];
+  };
+
+  for (let lx = 0; lx < CHUNK; lx++)
+    for (let lz = 0; lz < CHUNK; lz++)
+      for (let y = 0; y < yTop; y++) {
+        const id = dSelf[cellIndex(lx, y, lz)];
+        if (!id) continue;
+        const tiles = FACE_TILE[id];
+
+        // Cross blocks (torch/ladder/pane): two crossed quads on the
+        // cell's diagonals instead of cube faces, like MC plants.
+        if (CROSS_IDS.has(id)) {
+          const [u0, u1, v0, v1] = tileUV(tiles.side);
+          for (const [ax, az, bx, bz] of [[0.08, 0.08, 0.92, 0.92], [0.92, 0.08, 0.08, 0.92]]) {
+            pos.push(x0 + lx + ax, y, z0 + lz + az,  x0 + lx + bx, y, z0 + lz + bz,
+                     x0 + lx + ax, y + 1, z0 + lz + az,  x0 + lx + bx, y + 1, z0 + lz + bz);
+            for (let ci = 0; ci < 4; ci++) norm.push(0, 1, 0);
+            uv.push(u0, v0, u1, v0, u0, v1, u1, v1);
+            index.push(v, v + 1, v + 2, v + 2, v + 1, v + 3);
+            v += 4;
+          }
+          continue;
+        }
+
+        const yTopScale = LOW_IDS.has(id) ? 0.5 : 1;       // half-height blocks (bed)
+        for (const f of FACES) {
+          const nid = idAt(lx + f.dir[0], y + f.dir[1], lz + f.dir[2]);
+          if (nid && !NO_OCCLUDE_IDS.has(nid) && yTopScale === 1) continue;   // hidden face
+          if (nid === id) continue;                        // glass-against-glass
+          const [u0, u1, v0, v1] = tileUV(tiles[f.kind]);
+          const us = [u0, u1, u0, u1], vs = [v0, v0, v1, v1];
+          for (let ci = 0; ci < 4; ci++) {
+            const c = f.c[ci];
+            pos.push(x0 + lx + c[0], y + c[1] * yTopScale, z0 + lz + c[2]);
+            norm.push(f.dir[0], f.dir[1], f.dir[2]);
+            uv.push(us[ci], vs[ci]);
+          }
+          index.push(v, v + 1, v + 2, v + 2, v + 1, v + 3);
+          v += 4;
+        }
+      }
+
+  if (ch.mesh) { scene.remove(ch.mesh); ch.mesh.geometry.dispose(); ch.mesh = null; }
+  if (!index.length) return;
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal',   new THREE.Float32BufferAttribute(norm, 3));
+  g.setAttribute('uv',       new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(index);
+  const mesh = new THREE.Mesh(g, atlasMaterial);
+  scene.add(mesh);
+  ch.mesh = mesh;
+}
+
+/* ---- Per-frame chunk streaming ---- */
+const MESH_RADIUS = 6;                    // meshed chunks around the player
+const DATA_RADIUS = MESH_RADIUS + 1;      // data one ring further (for face culling)
+const EVICT_RADIUS = MESH_RADIUS + 3;     // beyond this, chunks are dropped
+
+const neighborsReady = (cx, cz) =>
+  chunks.has(chunkKey(cx + 1, cz)) && chunks.has(chunkKey(cx - 1, cz)) &&
+  chunks.has(chunkKey(cx, cz + 1)) && chunks.has(chunkKey(cx, cz - 1));
+
+let firstStream = true;   // first frame loads the whole spawn area at once
+let evictTick = 0;
+
+function updateChunks() {
+  const pcx = chunkOf(player.pos.x), pcz = chunkOf(player.pos.z);
+  let gens = firstStream ? Infinity : 2;      // per-frame budgets while walking
+  let meshes = firstStream ? Infinity : 2;
+
+  for (let r = 0; r <= DATA_RADIUS && (gens > 0 || meshes > 0); r++) {
+    for (let dx = -r; dx <= r; dx++)
+      for (let dz = -r; dz <= r; dz++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;   // ring cells only
+        const cx = pcx + dx, cz = pcz + dz;
+        let ch = chunks.get(chunkKey(cx, cz));
+        if (!ch && gens > 0) { ch = generateChunk(cx, cz); gens--; }
+        if (ch && !ch.mesh && r <= MESH_RADIUS && meshes > 0 && neighborsReady(cx, cz)) {
+          buildChunkMesh(cx, cz);
+          meshes--;
+        }
+      }
+  }
+  firstStream = false;
+
+  if ((evictTick++ & 31) === 0) {           // occasional cleanup sweep
+    for (const [k, ch] of chunks) {
+      const [cx, cz] = k.split(',').map(Number);
+      if (Math.max(Math.abs(cx - pcx), Math.abs(cz - pcz)) > EVICT_RADIUS) {
+        if (ch.mesh) { scene.remove(ch.mesh); ch.mesh.geometry.dispose(); }
+        chunks.delete(k);                   // edits persist in editsByChunk
+      }
+    }
+  }
+}
+
+/* ---- Torch glow: a small pool of point lights hops between the
+ * nearest placed torches (full per-block lighting is out of scope). */
+const torchLights = [];
+for (let i = 0; i < 4; i++) {
+  const L = new THREE.PointLight(0xffb45c, 0, 9, 2);
+  scene.add(L);
+  torchLights.push(L);
+}
+let torchLightTick = 0;
+function updateTorchLights(dt) {
+  torchLightTick -= dt;
+  if (torchLightTick > 0) return;
+  torchLightTick = 0.4;
+  const near = [];
+  for (const k of torchSpots) {
+    const [x, y, z] = k.split(',').map(Number);
+    const d2 = (x - player.pos.x) ** 2 + (y - player.pos.y) ** 2 + (z - player.pos.z) ** 2;
+    if (d2 < 40 * 40) near.push([d2, x, y, z]);
+  }
+  near.sort((a, b) => a[0] - b[0]);
+  torchLights.forEach((L, i) => {
+    if (near[i]) { L.position.set(near[i][1] + 0.5, near[i][2] + 0.6, near[i][3] + 0.5); L.intensity = 1.4; }
+    else L.intensity = 0;
+  });
+}
+
+/* ---- Containers: chests + furnaces live OUTSIDE the voxel grid in
+ * a Map keyed by block position, so their contents survive chunk
+ * eviction and reload. Furnaces smelt in real time, UI open or not. */
+const containers = new Map();   // "x,y,z" -> chest {kind,slots[27]} | furnace {kind,in,fuel,out,prog,burn,burnMax}
+
+function containerAt(x, y, z, kind) {
+  const k = `${x},${y},${z}`;
+  let c = containers.get(k);
+  if (!c) {
+    c = kind === 'chest'
+      ? { kind, slots: new Array(27).fill(null) }
+      : { kind: 'furnace', in: null, fuel: null, out: null, prog: 0, burn: 0, burnMax: 0 };
+    containers.set(k, c);
+  }
+  return c;
+}
+
+function updateFurnaces(dt) {
+  let dirty = false;
+  for (const c of containers.values()) {
+    if (c.kind !== 'furnace') continue;
+    const product = c.in && SMELT_RECIPES[c.in.type];
+    const canOut = product && (!c.out || (c.out.type === product && c.out.count < STACK_CAP));
+    if (c.burn > 0) { c.burn -= dt; dirty = true; }
+    if (product && canOut) {
+      if (c.burn <= 0 && c.fuel && BLOCK_TYPES[c.fuel.type].fuel) {
+        c.burn = c.burnMax = BLOCK_TYPES[c.fuel.type].fuel;   // light one fuel item
+        if (--c.fuel.count <= 0) c.fuel = null;
+      }
+      if (c.burn > 0) {
+        c.prog += dt;
+        if (c.prog >= SMELT_TIME) {
+          c.prog = 0;
+          c.out = c.out ? { ...c.out, count: c.out.count + 1 } : { type: product, count: 1 };
+          if (--c.in.count <= 0) c.in = null;
+        }
+      } else c.prog = 0;   // no fire → progress resets, like MC
+    } else c.prog = 0;
+  }
+  // live-refresh the furnace screen if it's the one being watched
+  if (dirty && invOpen && uiMode === 'furnace') renderFurnaceProgress();
+}
+
+// Wireframe highlight for the targeted block.
+const highlight = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002, 1.002, 1.002)),
+  new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.6 })
+);
+highlight.visible = false;
+scene.add(highlight);
+
+/* ================================================================
+ * SECTION 3: PLAYER — physics, movement, collision
+ * The player is an AABB. Movement resolves one axis at a time so
+ * hitting a wall only kills that axis's velocity (wall sliding).
+ * ================================================================ */
+
+const PLAYER = {
+  width: 0.6,      // AABB footprint
+  height: 1.8,
+  eye: 1.62,       // camera height above feet
+  walk: 3.8,       // blocks/sec normal speed (slower average)
+  sprint: 6.4,     // hold R + W
+  crouch: 1.7,     // hold Shift — slow + can't fall off edges
+  jump: 8.4,       // initial jump velocity
+  gravity: 24,
+  reach: 5,        // block interaction distance
+};
+
+const player = {
+  pos: new THREE.Vector3(0, WORLD_HEIGHT, 0),   // moved to SPAWN during boot
+  vel: new THREE.Vector3(),
+  onGround: false,
+};
+
+const controls = new PointerLockControls(camera, document.body);
+const keys = {};
+addEventListener('keydown', (e) => { keys[e.code] = true; });
+addEventListener('keyup',   (e) => { keys[e.code] = false; });
+
+// Resolve collisions on a single axis after moving along it.
+// TELEPORT FIX: the old version snapped position once PER overlapping
+// cell — with the AABB straddling several blocks the snaps compounded
+// and launched the player. Now all blocking cells are scanned first,
+// then ONE clamp is applied against the nearest blocking face in the
+// direction of motion.
+function collideAxis(axis) {
+  const vel = player.vel[axis];
+  if (vel === 0) return;   // didn't move on this axis → nothing to resolve
+
+  const half = PLAYER.width / 2;
+  const EPS = 0.001;
+  const minX = Math.floor(player.pos.x - half), maxX = Math.floor(player.pos.x + half);
+  const minY = Math.floor(player.pos.y),        maxY = Math.floor(player.pos.y + PLAYER.height);
+  const minZ = Math.floor(player.pos.z - half), maxZ = Math.floor(player.pos.z + half);
+
+  // Find the nearest blocking face along the movement direction.
+  let bound = null;
+  for (let x = minX; x <= maxX; x++)
+    for (let y = minY; y <= maxY; y++)
+      for (let z = minZ; z <= maxZ; z++) {
+        if (!solidAt(x, y, z)) continue;   // torches/ladders don't block
+        const cell = axis === 'x' ? x : axis === 'y' ? y : z;
+        // moving +: the cell's low face blocks us; moving -: its high face
+        const face = vel > 0 ? cell : cell + 1;
+        bound = bound === null ? face
+              : vel > 0 ? Math.min(bound, face) : Math.max(bound, face);
+      }
+  if (bound === null) return;
+
+  if (axis === 'y') {
+    if (vel < 0) { player.pos.y = bound + EPS; player.onGround = true; }
+    else         { player.pos.y = bound - PLAYER.height - EPS; }
+  } else {
+    player.pos[axis] = vel > 0 ? bound - half - EPS : bound + half + EPS;
+  }
+  player.vel[axis] = 0;
+}
+
+// True if any solid block sits directly under the player's AABB —
+// used by crouch to refuse steps that would walk off an edge.
+function hasSupport() {
+  const half = PLAYER.width / 2;
+  const y = Math.floor(player.pos.y - 0.05);
+  const minX = Math.floor(player.pos.x - half), maxX = Math.floor(player.pos.x + half);
+  const minZ = Math.floor(player.pos.z - half), maxZ = Math.floor(player.pos.z + half);
+  for (let x = minX; x <= maxX; x++)
+    for (let z = minZ; z <= maxZ; z++)
+      if (solidAt(x, y, z)) return true;
+  return false;
+}
+
+// True while the player's body overlaps a climbable (ladder) cell.
+function onLadder() {
+  const x = Math.floor(player.pos.x), z = Math.floor(player.pos.z);
+  for (const dy of [0.1, 1.0, 1.7]) {
+    const t = getBlock(x, Math.floor(player.pos.y + dy), z);
+    if (t && BLOCK_TYPES[t].climb) return true;
+  }
+  return false;
+}
+
+function updatePlayer(dt) {
+  // --- movement mode: crouch beats sprint; sprint needs R + W and
+  // enough food (hunger ≤ 6 disables sprinting, per the guide) ---
+  const crouching = keys['ShiftLeft'] || keys['ShiftRight'];
+  const sprinting = !crouching && keys['KeyR'] && keys['KeyW'] && stats.hunger > 6;
+  const speed = crouching ? PLAYER.crouch : sprinting ? PLAYER.sprint : PLAYER.walk;
+
+  // --- horizontal input, rotated into camera yaw ---
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  forward.y = 0; forward.normalize();
+  const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0));
+
+  const move = new THREE.Vector3();
+  if (keys['KeyW']) move.add(forward);
+  if (keys['KeyS']) move.sub(forward);
+  if (keys['KeyD']) move.add(right);
+  if (keys['KeyA']) move.sub(right);
+  if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed);
+  player.vel.x = move.x;
+  player.vel.z = move.z;
+  // activity level drives hunger exhaustion in updateStats()
+  player.moveState = move.lengthSq() === 0 ? 'idle'
+    : crouching ? 'crouch' : sprinting ? 'sprint' : 'walk';
+
+  // --- jump & gravity ---
+  if (keys['Space'] && player.onGround) { player.vel.y = PLAYER.jump; player.onGround = false; }
+  player.vel.y -= PLAYER.gravity * dt;
+  player.vel.y = Math.max(player.vel.y, -50);
+
+  // --- ladders: W/Space climbs, Shift holds on, otherwise slow slide ---
+  if (onLadder()) {
+    if (keys['KeyW'] || keys['Space']) player.vel.y = 3.4;
+    else if (crouching) player.vel.y = Math.max(player.vel.y, 0);
+    else player.vel.y = Math.max(player.vel.y, -2.5);
+    player.peakY = player.pos.y;   // never take fall damage off a ladder
+  }
+
+  // --- axis-separated integration + collision ---
+  // While crouching on the ground, revert any horizontal step that
+  // would leave the player without support (Minecraft sneak rule).
+  const guardEdges = crouching && player.onGround;
+  player.onGround = false;
+
+  const prevX = player.pos.x;
+  player.pos.x += player.vel.x * dt; collideAxis('x');
+  if (guardEdges && !hasSupport()) { player.pos.x = prevX; player.vel.x = 0; }
+
+  const prevZ = player.pos.z;
+  player.pos.z += player.vel.z * dt; collideAxis('z');
+  if (guardEdges && !hasSupport()) { player.pos.z = prevZ; player.vel.z = 0; }
+
+  player.pos.y += player.vel.y * dt; collideAxis('y');
+
+  // --- fall damage: falls beyond ~3 blocks hurt (md §4) ---
+  if (!player.onGround) {
+    player.peakY = Math.max(player.peakY ?? player.pos.y, player.pos.y);
+  } else {
+    const fall = (player.peakY ?? player.pos.y) - player.pos.y;
+    player.peakY = player.pos.y;
+    // ceil so any fall beyond 3 blocks deals at least 1 damage
+    if (fall > 3) damagePlayer(Math.ceil(fall - 3), 'You fell from a high place');
+  }
+
+  // fell into the void → death that destroys the inventory (md §3)
+  if (player.pos.y < -20) die(true, 'You fell out of the world');
+
+  // crouching drops the camera a touch, like sneaking in Minecraft
+  const eye = crouching ? PLAYER.eye - 0.18 : PLAYER.eye;
+  camera.position.set(player.pos.x, player.pos.y + eye, player.pos.z);
+}
+
+/* ================================================================
+ * SECTION 3b: SURVIVAL STATS — health, hunger, death (md §4)
+ * 20 HP / 20 hunger. Activity builds exhaustion → drains hunger.
+ * Hunger ≥ 18 regenerates HP; hunger 0 starves down to 1 HP.
+ * ================================================================ */
+
+const stats = { hp: 20, hunger: 20, exhaustion: 0, regenTimer: 0, starveTimer: 0 };
+
+let dead = false;
+
+// Total armor points + toughness across the four equipped pieces.
+function armorTotals() {
+  let pts = 0, tough = 0;
+  for (const k of ['head', 'chest', 'legs', 'feet']) {
+    const s = armorInv[k];
+    if (!s) continue;
+    pts += BLOCK_TYPES[s.type].points ?? 0;
+    tough += BLOCK_TYPES[s.type].tough ?? 0;
+  }
+  return { pts, tough };
+}
+
+function damagePlayer(n, cause) {
+  if (n <= 0 || dead) return;
+  // Vanilla 1.9 armor formula: each point blocks up to 4%, but heavy
+  // hits punch through weak armor — TOUGHNESS (diamond) resists that.
+  const { pts, tough } = armorTotals();
+  if (pts > 0) {
+    const reduction = Math.min(20, Math.max(pts / 5, pts - n / (2 + tough / 4))) / 25;
+    n = Math.max(1, Math.floor(n * (1 - reduction)));
+  }
+  stats.hp = Math.max(0, stats.hp - n);
+  updateStatsHUD();
+  if (stats.hp === 0) die(false, cause);
+}
+
+// Death: drop the whole inventory where we died (normal death) or
+// destroy it (void death), then respawn at world spawn, fully reset.
+// Death: scatter the whole inventory at the death spot (void deaths
+// destroy it), then freeze behind the "You Died" screen until the
+// player clicks Respawn.
+function die(voidDeath, cause = 'You died') {
+  if (dead) return;
+  const scatter = (s) => {
+    if (s && !voidDeath) spawnDropAt(player.pos.x + (Math.random() - 0.5) * 1.6,
+      player.pos.y + 0.5, player.pos.z + (Math.random() - 0.5) * 1.6, s.type, s.count);
+  };
+  rightHand.forEach((s, i) => { scatter(s); rightHand[i] = null; });
+  mainInv.forEach((s, i) => { scatter(s); mainInv[i] = null; });
+  craftGrid.forEach((s, i) => { scatter(s); craftGrid[i] = null; });
+  for (const k of Object.keys(armorInv)) { scatter(armorInv[k]); armorInv[k] = null; }
+  scatter(leftHand); leftHand = null;
+  scatter(cursorStack); cursorStack = null;
+  dead = true;
+  mining.held = false;
+  resetMining();
+  if (invOpen) { invOpen = false; invEl.classList.add('hidden'); cursorEl.classList.add('hidden'); }
+  buildHotbar();
+  showDeathScreen(cause);
+  if (controls.isLocked) controls.unlock();
+}
+
+function respawn() {
+  stats.hp = 20; stats.hunger = 20;
+  stats.exhaustion = 0; stats.regenTimer = 0; stats.starveTimer = 0;
+  player.pos.copy(SPAWN);
+  player.vel.set(0, 0, 0);
+  player.peakY = player.pos.y;
+  updateStatsHUD();
+  buildHotbar();
+  dead = false;
+  document.getElementById('deathScreen').classList.add('hidden');
+  controls.lock();
+}
+
+function updateStats(dt) {
+  // exhaustion by activity; every 4 points costs 1 hunger
+  const rate = { sprint: 0.5, walk: 0.1, crouch: 0.06, idle: 0.015 }[player.moveState] ?? 0.015;
+  stats.exhaustion += rate * dt;
+  if (stats.exhaustion >= 4) {
+    stats.exhaustion -= 4;
+    if (stats.hunger > 0) { stats.hunger--; updateStatsHUD(); }
+  }
+
+  // well fed (≥18) → regenerate 1 HP / 4s, at some hunger cost
+  if (stats.hunger >= 18 && stats.hp < 20) {
+    stats.regenTimer += dt;
+    if (stats.regenTimer >= 4) {
+      stats.regenTimer = 0;
+      stats.hp++; stats.exhaustion += 0.5;
+      updateStatsHUD();
+    }
+  } else stats.regenTimer = 0;
+
+  // starving (0) → lose 1 HP / 4s but never below 1 (normal difficulty)
+  if (stats.hunger === 0) {
+    stats.starveTimer += dt;
+    if (stats.starveTimer >= 4) {
+      stats.starveTimer = 0;
+      if (stats.hp > 1) { stats.hp--; updateStatsHUD(); }
+    }
+  } else stats.starveTimer = 0;
+}
+
+// Right-click with food in hand eats it: +food hunger, consume one.
+function eatHeld(stack) {
+  if (stats.hunger >= 20) return;   // full — don't waste food
+  stats.hunger = Math.min(20, stats.hunger + BLOCK_TYPES[stack.type].food);
+  stack.count--;
+  if (stack.count <= 0) clearStack(stack);
+  updateStatsHUD();
+  buildHotbar();
+}
+
+/* ================================================================
+ * SECTION 4: INPUT / BLOCK INTERACTION
+ * Raycast from screen center every frame; left = break (bedrock
+ * immune), right = place the selected hotbar block on the hit face.
+ * ================================================================ */
+
+let currentTarget = null;   // { x, y, z, normal } of the block under the crosshair
+
+// Voxel DDA raycast (Amanatides & Woo): walk the grid cell-by-cell
+// from the camera. O(reach) per frame no matter how big the world —
+// no mesh intersection tests at all.
+function raycastVoxel(o, d, maxDist) {
+  let x = Math.floor(o.x), y = Math.floor(o.y), z = Math.floor(o.z);
+  const sx = d.x > 0 ? 1 : -1, sy = d.y > 0 ? 1 : -1, sz = d.z > 0 ? 1 : -1;
+  const dtx = Math.abs(1 / d.x), dty = Math.abs(1 / d.y), dtz = Math.abs(1 / d.z);
+  let tx = d.x !== 0 ? Math.abs(((sx > 0 ? x + 1 : x) - o.x) / d.x) : Infinity;
+  let ty = d.y !== 0 ? Math.abs(((sy > 0 ? y + 1 : y) - o.y) / d.y) : Infinity;
+  let tz = d.z !== 0 ? Math.abs(((sz > 0 ? z + 1 : z) - o.z) / d.z) : Infinity;
+  let normal = null, t = 0;
+  while (t <= maxDist) {
+    if (normal && getBlock(x, y, z)) return { x, y, z, normal };   // skip the camera's own cell
+    if (tx < ty && tx < tz) { x += sx; t = tx; tx += dtx; normal = { x: -sx, y: 0, z: 0 }; }
+    else if (ty < tz)       { y += sy; t = ty; ty += dty; normal = { x: 0, y: -sy, z: 0 }; }
+    else                    { z += sz; t = tz; tz += dtz; normal = { x: 0, y: 0, z: -sz }; }
+  }
+  return null;
+}
+
+function updateTarget() {
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const hit = raycastVoxel(camera.position, dir, PLAYER.reach);
+  if (hit) {
+    currentTarget = hit;
+    highlight.position.set(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+    highlight.visible = true;
+  } else {
+    currentTarget = null;
+    highlight.visible = false;
+  }
+}
+
+/* ---- Mining: hold left mouse to break; hardness = seconds ---- */
+
+// Five crack-stage textures, drawn as random pixel walks radiating
+// from the face center — more and longer cracks at each stage.
+function paintCracks(ctx, stage) {
+  ctx.clearRect(0, 0, TEX_SIZE, TEX_SIZE);   // transparent background
+  ctx.fillStyle = 'rgba(15,15,15,0.85)';
+  const walks = 3 + stage * 2;
+  for (let w = 0; w < walks; w++) {
+    let x = 8, y = 8;
+    for (let i = 0; i < 3 + stage * 2; i++) {
+      ctx.fillRect(x, y, 1, 1);
+      x += Math.floor(Math.random() * 3) - 1;
+      y += Math.floor(Math.random() * 3) - 1;
+    }
+  }
+}
+
+const CRACK_STAGES = 5;
+const crackMaterials = [];
+for (let s = 0; s < CRACK_STAGES; s++) {
+  crackMaterials.push(new THREE.MeshBasicMaterial({
+    map: makeTexture((ctx) => paintCracks(ctx, s)),
+    transparent: true,
+    depthWrite: false,
+  }));
+}
+// Slightly inflated shell drawn over the block being mined.
+const crackMesh = new THREE.Mesh(new THREE.BoxGeometry(1.01, 1.01, 1.01), crackMaterials[0]);
+crackMesh.visible = false;
+scene.add(crackMesh);
+
+const mining = { held: false, key: null, progress: 0 };
+
+function resetMining() {
+  mining.key = null;
+  mining.progress = 0;
+  crackMesh.visible = false;
+}
+
+// Called every frame: advances progress while the button is held on
+// a minable target; any interruption (release, look away, retarget)
+// resets progress to zero.
+function updateMining(dt) {
+  const target = mining.held ? currentTarget : null;
+  const type = target ? getBlock(target.x, target.y, target.z) : null;
+  if (!type || !BLOCK_TYPES[type].breakable) { resetMining(); return; }   // bedrock never mines
+
+  const k = key(target.x, target.y, target.z);
+  if (k !== mining.key) { mining.key = k; mining.progress = 0; }   // switched targets → restart
+
+  // the right tool in hand divides the mining time
+  let hardness = BLOCK_TYPES[type].hardness;
+  const held = heldStack();
+  const tool = held && BLOCK_TYPES[held.type].tool;
+  if (tool && TOOL_TARGETS[tool.cls].includes(type)) hardness /= tool.mult;
+  mining.progress += dt / hardness;                     // Infinity hardness → progress stays 0
+
+  if (mining.progress >= 1) {
+    // special drops: grass → dirt, coal/diamond ore → the mineral,
+    // metal ores drop the ORE BLOCK (must be smelted into ingots),
+    // leaves may drop an apple
+    const ORE_DROPS = { coal_ore: 'coal', diamond_ore: 'diamond' };
+    const dropType = type === 'grass' ? 'dirt'
+                   : ORE_DROPS[type] ? ORE_DROPS[type]
+                   : (type === 'leaves' && Math.random() < 0.2) ? 'apple' : type;
+    // breaking a chest/furnace spills everything stored inside it
+    const cont = containers.get(`${target.x},${target.y},${target.z}`);
+    if (cont) {
+      const spill = cont.kind === 'chest' ? cont.slots : [cont.in, cont.fuel, cont.out];
+      for (const s of spill)
+        if (s) spawnDropAt(target.x + 0.5, target.y + 0.5, target.z + 0.5, s.type, s.count);
+      containers.delete(`${target.x},${target.y},${target.z}`);
+    }
+    spawnDrop(target.x, target.y, target.z, dropType);
+    removeBlock(target.x, target.y, target.z);
+    resetMining();
+    return;
+  }
+  crackMesh.visible = true;
+  crackMesh.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
+  crackMesh.material = crackMaterials[Math.min(CRACK_STAGES - 1, Math.floor(mining.progress * CRACK_STAGES))];
+}
+
+// Reject placements whose block cube would overlap the player's AABB
+// (standard box-vs-box test: overlap on all three axes). Without
+// this, placing a block inside yourself makes the collision resolver
+// eject you — one of the "random teleport" causes.
+function canPlaceBlockAt(x, y, z) {
+  const half = PLAYER.width / 2;
+  return !(
+    x < player.pos.x + half           && x + 1 > player.pos.x - half &&
+    y < player.pos.y + PLAYER.height  && y + 1 > player.pos.y &&
+    z < player.pos.z + half           && z + 1 > player.pos.z - half
+  );
+}
+
+// BRIDGING: while sneaking, scan outward from the feet at foot level
+// and return the FIRST empty cell in the facing direction that still
+// touches solid ground — i.e. the gap right at the platform's edge.
+// This is what lets you bridge: hold Shift, face the gap, right-click,
+// step forward, repeat. Returns null when there's no edge ahead (so
+// normal on-flat-ground building is unaffected).
+const _bridgeEuler = new THREE.Euler();
+function bridgeCell() {
+  // Use the camera's YAW only (from its quaternion) so bridging works
+  // even while looking STRAIGHT DOWN at the gap — the natural way to
+  // bridge. (The old camera-direction approach had no horizontal
+  // component when looking down, so it silently did nothing.)
+  _bridgeEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+  const yaw = _bridgeEuler.y;
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);   // facing, flattened
+  const y = Math.floor(player.pos.y - 0.05);        // the level of the block underfoot
+  for (let d = 0.2; d <= 2.2; d += 0.2) {
+    const x = Math.floor(player.pos.x + fx * d);
+    const z = Math.floor(player.pos.z + fz * d);
+    if (solidAt(x, y, z)) continue;              // still over solid ground; scan further out
+    // first empty cell reached — bridge into it only if it borders ground
+    const touches = NEIGHBORS.some(([dx, dy, dz]) => solidAt(x + dx, y + dy, z + dz));
+    return touches ? { x, y, z } : null;
+  }
+  return null;
+}
+
+function placeBlock() {
+  const stack = heldStack();
+  if (!stack || stack.count <= 0) return;        // nothing in the active hand
+  if (BLOCK_TYPES[stack.type].item) return;      // items aren't placeable blocks
+
+  // Sneaking prioritizes bridging (place into the edge gap); otherwise
+  // place against the targeted block face like normal.
+  const crouching = keys['ShiftLeft'] || keys['ShiftRight'];
+  const bridge = crouching ? bridgeCell() : null;
+  let px, py, pz;
+  if (bridge) {
+    px = bridge.x; py = bridge.y; pz = bridge.z;
+  } else if (currentTarget) {
+    const { x, y, z, normal } = currentTarget;
+    px = x + normal.x; py = y + normal.y; pz = z + normal.z;
+  } else {
+    return;
+  }
+
+  if (!inBounds(px, py, pz)) return;
+  if (getBlock(px, py, pz)) return;
+  if (!canPlaceBlockAt(px, py, pz)) return;
+  setBlock(px, py, pz, stack.type);
+  stack.count--;                                 // consume one from the stack
+  if (stack.count <= 0) clearStack(stack);       // emptied → clear the slot
+  buildHotbar();
+}
+
+document.addEventListener('mousedown', (e) => {
+  if (!controls.isLocked) return;
+  if (e.button === 0) {                      // attack a mob, else mine
+    const mob = mobUnderCrosshair();
+    if (mob) attackMob(mob);
+    else mining.held = true;
+  }
+  if (e.button === 2) {                      // right-click: use block / eat / place
+    const sneaking = keys['ShiftLeft'] || keys['ShiftRight'];
+    if (!sneaking && currentTarget) {
+      const t = getBlock(currentTarget.x, currentTarget.y, currentTarget.z);
+      if (t === 'crafting') { openInventory(3); return; }    // crafting table → 3×3 grid
+      if (t === 'furnace' || t === 'smoker') {
+        openContainer('furnace', currentTarget.x, currentTarget.y, currentTarget.z); return;
+      }
+      if (t === 'chest') {
+        openContainer('chest', currentTarget.x, currentTarget.y, currentTarget.z); return;
+      }
+      if (t === 'bed') {                       // sleep: only at night
+        if (sunHeight < -0.02) {
+          worldTime = Math.ceil(worldTime / DAY_CYCLE + 0.001) * DAY_CYCLE + DAY_CYCLE * 0.03;
+          SPAWN.set(currentTarget.x + 0.5, currentTarget.y + 0.51, currentTarget.z + 0.5);
+          sleepFade();
+        }
+        return;
+      }
+    }
+    const stack = heldStack();
+    if (stack && BLOCK_TYPES[stack.type].food) eatHeld(stack);
+    else placeBlock();
+  }
+});
+document.addEventListener('mouseup', (e) => {
+  if (e.button === 0) mining.held = false;
+});
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+/* ================================================================
+ * SECTION 5: INVENTORY (10 right slots + 1 left slot)
+ * Each slot is { type, count } or null. `activeSlot` indexes the
+ * right hand (number keys). F swaps the selected right-hand stack
+ * with the left hand; heldStack() falls back to the left hand.
+ * ================================================================ */
+
+const RIGHT_SLOTS = 10;
+const STACK_CAP = 64;
+const rightHand = new Array(RIGHT_SLOTS).fill(null);   // {type, count} | null
+let leftHand = null;                                   // {type, count} | null
+let activeSlot = 0;                                     // 0..9 into rightHand
+
+// The stack currently "in hand" — drives the viewmodel, placing and
+// eating. The selected right-hand slot wins; the left (off-)hand is
+// the fallback when it's empty, like Minecraft's offhand.
+function heldStack() {
+  return rightHand[activeSlot] ?? leftHand;
+}
+
+// Clear whichever hand a (now empty) stack lives in.
+function clearStack(stack) {
+  if (stack === leftHand) leftHand = null;
+  else if (stack === rightHand[activeSlot]) rightHand[activeSlot] = null;
+}
+
+// Stack items into an array: first top up existing stacks of this
+// type (cap 64), then fill empty slots. Returns the leftover count.
+function stackInto(arr, type, count) {
+  for (let i = 0; i < arr.length && count > 0; i++) {
+    const s = arr[i];
+    if (s && s.type === type && s.count < STACK_CAP) {
+      const add = Math.min(STACK_CAP - s.count, count);
+      s.count += add;
+      count -= add;
+    }
+  }
+  for (let i = 0; i < arr.length && count > 0; i++) {
+    if (arr[i] === null) {
+      const add = Math.min(STACK_CAP, count);
+      arr[i] = { type, count: add };
+      count -= add;
+    }
+  }
+  return count;
+}
+
+// Pickups fill the hotbar (right hand) first, then the backpack.
+// Returns how many items could NOT be stored (0 = everything fit).
+function addToInventory(type, count) {
+  count = stackInto(rightHand, type, count);
+  count = stackInto(mainInv, type, count);
+  return count;
+}
+
+const hotbarEl = document.getElementById('hotbar');
+const leftEl   = document.getElementById('lefthand');
+const heartsEl = document.getElementById('hearts');
+const hungerEl = document.getElementById('hunger');
+const armorEl  = document.getElementById('armorbar');
+
+// Hearts/drumsticks: 2 points each, half shown at odd values (md §4).
+// Armor points show as a 🛡 row above the hearts (2 pts per icon,
+// vanilla style) — only while any armor is worn.
+function updateStatsHUD() {
+  let h = '', f = '';
+  for (let i = 0; i < 10; i++) {
+    const hp = stats.hp - i * 2;
+    h += `<span class="${hp >= 2 ? 'full' : hp === 1 ? 'half' : 'off'}">♥</span>`;
+    const fu = stats.hunger - i * 2;
+    f += `<span class="${fu >= 2 ? 'full' : fu === 1 ? 'half' : 'off'}">🍗</span>`;
+  }
+  heartsEl.innerHTML = h;
+  hungerEl.innerHTML = f;
+  const { pts } = armorTotals();
+  let a = '';
+  if (pts > 0)
+    for (let i = 0; i < 10; i++) {
+      const ap = pts - i * 2;
+      a += `<span class="${ap >= 2 ? 'full' : ap === 1 ? 'half' : 'off'}">🛡</span>`;
+    }
+  armorEl.innerHTML = a;
+}
+
+// Cache each type's inventory thumbnail as a data URL (built once).
+// Items + cross sprites show their flat 16×16 icon; SOLID BLOCKS get
+// the classic MC isometric mini-cube: top face on top, two shaded
+// side faces below — exactly how the vanilla inventory draws blocks.
+const thumbCache = {};
+function thumbURL(type) {
+  if (!thumbCache[type]) {
+    const def = BLOCK_TYPES[type];
+    if (def.item || def.cross) {
+      thumbCache[type] = materialsFor(type)[2].map.image.toDataURL();
+    } else {
+      const mats = materialsFor(type);
+      const top = mats[2].map.image, side = mats[0].map.image;
+      // furnace/smoker: mouth on the FRONT face only, like the real item
+      const left = (type === 'furnace' || type === 'smoker') ? top : side;
+      const c = document.createElement('canvas');
+      c.width = c.height = 32;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.setTransform(1, 0.5, -1, 0.5, 16, 0);          // top diamond
+      ctx.drawImage(top, 0, 0, 16, 16);
+      ctx.setTransform(1, 0.5, 0, 1, 0, 8);              // left face (darkest)
+      ctx.drawImage(left, 0, 0, 16, 16);
+      ctx.fillStyle = 'rgba(0,0,24,0.38)';
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.setTransform(1, -0.5, 0, 1, 16, 16);           // right face (mid shade)
+      ctx.drawImage(side, 0, 0, 16, 16);
+      ctx.fillStyle = 'rgba(0,0,24,0.18)';
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      thumbCache[type] = c.toDataURL();
+    }
+  }
+  return thumbCache[type];
+}
+
+function slotHTML(stack, { num = null, selected = false } = {}) {
+  const empty = !stack;
+  const numTag = num !== null ? `<span class="num">${num}</span>` : '';
+  const swatch = empty ? '' : `<div class="swatch" style="background-image:url(${thumbURL(stack.type)})"></div>`;
+  const count  = (!empty && stack.count > 1) ? `<span class="count">${stack.count}</span>` : '';
+  return `<div class="slot ${empty ? 'empty' : ''} ${selected ? 'selected' : ''}">${numTag}${swatch}${count}</div>`;
+}
+
+function buildHotbar() {
+  // glow whichever hand heldStack() is actually drawing from
+  const usingLeft = !rightHand[activeSlot] && !!leftHand;
+  hotbarEl.className = 'row' + (usingLeft ? '' : ' active-hand');
+  hotbarEl.innerHTML = rightHand
+    .map((s, i) => slotHTML(s, { num: (i + 1) % 10, selected: i === activeSlot }))
+    .join('');
+  leftEl.className = 'row' + (usingLeft ? ' active-hand' : '');
+  leftEl.innerHTML = slotHTML(leftHand, { selected: usingLeft });
+}
+
+// Number keys 1..9,0 select right-hand slot; F swaps the selected
+// right-hand stack with the left hand (vanilla offhand swap) — the
+// only way items reach the left hand, since pickups are right-only.
+addEventListener('keydown', (e) => {
+  if (invOpen) return;                 // inventory screen owns the keys
+  if (e.code === 'KeyF') {
+    const tmp = rightHand[activeSlot];
+    rightHand[activeSlot] = leftHand;
+    leftHand = tmp;
+    buildHotbar();
+    return;
+  }
+  if (/^Digit[0-9]$/.test(e.code)) {
+    const d = parseInt(e.code.slice(5), 10);
+    activeSlot = d === 0 ? 9 : d - 1;   // 0 selects the 10th slot
+    buildHotbar();
+  }
+});
+addEventListener('wheel', (e) => {
+  if (!controls.isLocked) return;
+  activeSlot = (activeSlot + (e.deltaY > 0 ? 1 : -1) + RIGHT_SLOTS) % RIGHT_SLOTS;
+  buildHotbar();
+});
+
+/* ================================================================
+ * SECTION 5b: DROPPED ITEMS
+ * Mined blocks spawn a small spinning cube that falls, rests on the
+ * ground (single floor-cell check — no full AABB), bobs, and is
+ * collected when the player gets close. Pickups feed the RIGHT hand.
+ * ================================================================ */
+
+const DROP_SIZE = 0.3;
+const dropGeo = new THREE.BoxGeometry(DROP_SIZE, DROP_SIZE, DROP_SIZE);
+const PICKUP_RADIUS = 1.6;   // ~1 block away horizontally, accounting for body height
+const drops = [];   // { mesh, type, vel, pos, grounded, age }
+
+// Drops carry a count so death can drop whole stacks as one entity.
+// Blocks drop as mini cubes; items drop as their extruded sprite.
+function spawnDropAt(px, py, pz, type, count = 1) {
+  let mesh;
+  if (BLOCK_TYPES[type].item) { mesh = itemSpriteMesh(type); mesh.scale.setScalar(0.45); }
+  else mesh = new THREE.Mesh(dropGeo, materialsFor(type));    // shares block textures
+  const pos = new THREE.Vector3(px, py, pz);
+  mesh.position.copy(pos);
+  scene.add(mesh);
+  drops.push({ mesh, type, count, pos, vel: new THREE.Vector3(0, 0, 0), grounded: false, age: Math.random() * 6 });
+}
+
+function spawnDrop(x, y, z, type) { spawnDropAt(x + 0.5, y + 0.5, z + 0.5, type); }
+
+function updateDrops(dt) {
+  // Player pickup point ≈ mid-body so ground items are in range.
+  const pickPoint = new THREE.Vector3(player.pos.x, player.pos.y + 0.9, player.pos.z);
+
+  for (let i = drops.length - 1; i >= 0; i--) {
+    const d = drops[i];
+    d.age += dt;
+
+    // Re-check support even once grounded: if the block a drop was
+    // resting on gets mined later (e.g. a tree torn down piece by
+    // piece), gravity must resume instead of leaving it floating.
+    const half = DROP_SIZE / 2;
+    const bx = Math.floor(d.pos.x), bz = Math.floor(d.pos.z);
+    if (d.grounded && !solidAt(bx, Math.floor(d.pos.y - half - 0.01), bz)) {
+      d.grounded = false;
+    }
+
+    // gravity + rest on the first solid cell beneath the item
+    if (!d.grounded) {
+      d.vel.y -= 18 * dt;
+      d.pos.y += d.vel.y * dt;
+      const belowY = Math.floor(d.pos.y - half);
+      if (solidAt(bx, belowY, bz)) { d.pos.y = belowY + 1 + half; d.vel.y = 0; d.grounded = true; }
+    }
+
+    // spin always; gentle bob only once grounded
+    d.mesh.rotation.y += dt * 2;
+    const bob = d.grounded ? Math.sin(d.age * 3) * 0.05 : 0;
+    d.mesh.position.set(d.pos.x, d.pos.y + bob, d.pos.z);
+
+    // pickup: store in right hand; only remove what actually fit.
+    // NEVER while dead — otherwise the corpse standing on the death
+    // spot instantly re-collects everything it just dropped.
+    if (!dead && pickPoint.distanceTo(d.pos) < PICKUP_RADIUS) {
+      const leftover = addToInventory(d.type, d.count);
+      if (leftover === 0) {
+        scene.remove(d.mesh);
+        drops.splice(i, 1);
+      } else {
+        d.count = leftover;   // right hand full: keep the remainder in the world
+      }
+      buildHotbar();
+    }
+  }
+}
+
+/* ================================================================
+ * SECTION 5c: FIRST-PERSON HAND (viewmodel)
+ * Rendered in a SEPARATE scene on a cleared depth buffer so the held
+ * block always draws on top of the world (never clipped by walls),
+ * like Minecraft's hand. Shows the active hand's selected block.
+ * ================================================================ */
+
+const handScene = new THREE.Scene();
+const handCamera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.01, 10);
+handScene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 1.0));
+const handLight = new THREE.DirectionalLight(0xffffff, 0.9);
+handLight.position.set(-0.5, 1, 1);
+handScene.add(handLight);
+
+// Held block (shown when the active slot has something).
+const handMesh = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), materialsFor('grass'));
+handMesh.rotation.set(0.15, -0.5, 0);         // tilt so 3 faces show, MC-style
+const HAND_BASE = new THREE.Vector3(0.62, -0.55, -1.15);   // bottom-right, in front
+handMesh.position.copy(HAND_BASE);
+handMesh.userData.base = HAND_BASE;
+handScene.add(handMesh);
+
+// Bare arm (shown when the active slot is empty): a chunky peach
+// forearm with a slightly darker cuff, angled diagonally in from the
+// bottom-right corner like Minecraft's first-person hand.
+const armGroup = new THREE.Group();
+const forearm = new THREE.Mesh(
+  new THREE.BoxGeometry(0.32, 0.32, 0.95),
+  new THREE.MeshLambertMaterial({ color: 0xf3c6a0 })     // peach skin
+);
+forearm.position.set(0, 0, 0.05);
+const cuff = new THREE.Mesh(
+  new THREE.BoxGeometry(0.35, 0.35, 0.28),
+  new THREE.MeshLambertMaterial({ color: 0xdca47c })     // darker peach cuff
+);
+cuff.position.set(0, 0, 0.62);
+armGroup.add(forearm, cuff);
+armGroup.rotation.set(0.22, -0.35, 0.42);                // diagonal tilt
+const ARM_BASE = new THREE.Vector3(0.66, -0.62, -0.85);
+armGroup.position.copy(ARM_BASE);
+armGroup.userData.base = ARM_BASE;
+handScene.add(armGroup);
+
+/* ---- Extruded item sprites (Minecraft-style held tools) ----
+ * Every opaque pixel of the 16×16 icon becomes a thin voxel, merged
+ * into one mesh — the flat icon gains real depth, exactly how MC
+ * renders held items. Cached per type; drops reuse it too. */
+const itemGeoCache = {};
+const itemSpriteMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+
+function itemSpriteMesh(type) {
+  if (!itemGeoCache[type]) {
+    const c = document.createElement('canvas');
+    c.width = c.height = TEX_SIZE;
+    const ctx = c.getContext('2d');
+    TEXTURE_PAINTERS[type].side(ctx);
+    const img = ctx.getImageData(0, 0, TEX_SIZE, TEX_SIZE).data;
+    const alpha = (x, y) => (x < 0 || x > 15 || y < 0 || y > 15) ? 0 : img[(y * 16 + x) * 4 + 3];
+
+    const pos = [], norm = [], col = [], idx = [];
+    let v = 0;
+    const S = 1 / 16, T = 1 / 24;                // pixel size, half-thickness
+    const tint = new THREE.Color();
+    const quad = (corners, n, r, g, b) => {
+      tint.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
+      for (const [qx, qy, qz] of corners) { pos.push(qx, qy, qz); norm.push(...n); col.push(tint.r, tint.g, tint.b); }
+      idx.push(v, v + 1, v + 2, v + 2, v + 1, v + 3);
+      v += 4;
+    };
+
+    for (let y = 0; y < 16; y++)
+      for (let x = 0; x < 16; x++) {
+        if (!alpha(x, y)) continue;
+        const i = (y * 16 + x) * 4, r = img[i], g = img[i + 1], b = img[i + 2];
+        const x0 = x * S - 0.5, x1 = x0 + S;
+        const y1 = (15 - y) * S - 0.5 + S, y0 = y1 - S;   // canvas y-down → world y-up
+        quad([[x0,y0,T],[x1,y0,T],[x0,y1,T],[x1,y1,T]], [0,0,1], r,g,b);        // front
+        quad([[x1,y0,-T],[x0,y0,-T],[x1,y1,-T],[x0,y1,-T]], [0,0,-1], r,g,b);   // back
+        // edge faces only where the neighboring pixel is transparent
+        if (!alpha(x-1,y)) quad([[x0,y0,-T],[x0,y0,T],[x0,y1,-T],[x0,y1,T]], [-1,0,0], r,g,b);
+        if (!alpha(x+1,y)) quad([[x1,y0,T],[x1,y0,-T],[x1,y1,T],[x1,y1,-T]], [1,0,0], r,g,b);
+        if (!alpha(x,y-1)) quad([[x0,y1,T],[x1,y1,T],[x0,y1,-T],[x1,y1,-T]], [0,1,0], r,g,b);
+        if (!alpha(x,y+1)) quad([[x0,y0,-T],[x1,y0,-T],[x0,y0,T],[x1,y0,T]], [0,-1,0], r,g,b);
+      }
+
+    const g2 = new THREE.BufferGeometry();
+    g2.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g2.setAttribute('normal',   new THREE.Float32BufferAttribute(norm, 3));
+    g2.setAttribute('color',    new THREE.Float32BufferAttribute(col, 3));
+    g2.setIndex(idx);
+    itemGeoCache[type] = g2;
+  }
+  return new THREE.Mesh(itemGeoCache[type], itemSpriteMat);
+}
+
+// Holder that positions/bobs the sprite like a held tool: handle to
+// the lower-right, head up — the classic first-person tool pose.
+const itemHolder = new THREE.Group();
+const ITEM_BASE = new THREE.Vector3(0.55, -0.42, -0.95);
+itemHolder.position.copy(ITEM_BASE);
+itemHolder.userData.base = ITEM_BASE;
+itemHolder.rotation.set(0.15, -0.35, 0.8);
+itemHolder.scale.setScalar(0.85);
+handScene.add(itemHolder);
+
+let walkTime = 0;   // drives the idle bob
+
+function updateHand(dt) {
+  const stack = heldStack();
+  const isItem = !!stack && !!BLOCK_TYPES[stack.type].item;
+  // pick the viewmodel: item sprite / block cube / bare arm
+  handMesh.visible = !!stack && !isItem;
+  itemHolder.visible = isItem;
+  armGroup.visible = !stack;
+  if (handMesh.visible) handMesh.material = materialsFor(stack.type);
+  if (isItem && itemHolder.userData.type !== stack.type) {
+    itemHolder.clear();
+    itemHolder.add(itemSpriteMesh(stack.type));
+    itemHolder.userData.type = stack.type;
+  }
+  const active = isItem ? itemHolder : stack ? handMesh : armGroup;
+
+  // bob while walking on the ground; small punch dip while mining
+  const moving = player.onGround && (player.vel.x !== 0 || player.vel.z !== 0);
+  walkTime += dt * (moving ? 9 : 0);
+  const bobX = Math.cos(walkTime) * 0.02;
+  const bobY = Math.abs(Math.sin(walkTime)) * 0.03;
+  const punch = mining.held ? Math.abs(Math.sin(mining.progress * Math.PI * 4)) * 0.12 : 0;
+  const b = active.userData.base;
+  active.position.set(b.x + bobX, b.y + bobY - punch, b.z + punch * 0.5);
+}
+
+/* ================================================================
+ * SECTION 5d: INVENTORY SCREEN (E) + CRAFTING + ARMOR
+ * MC-style: armor column, paper-doll preview, offhand slot, crafting
+ * grid (2×2 in inventory, 3×3 at a crafting table), 30-slot backpack,
+ * hotbar mirror. Click moves stacks; right-click splits/places one.
+ * ================================================================ */
+
+const mainInv = new Array(30).fill(null);            // the backpack
+const armorInv = { head: null, chest: null, legs: null, feet: null };
+const craftGrid = new Array(9).fill(null);           // 3×3; 2×2 mode uses cells 0,1,3,4
+let craftSize = 2;
+let craftResult = null;                              // { type, count } | null
+let cursorStack = null;                              // stack riding the mouse
+let invOpen = false;
+let uiMode = 'player';                               // 'player' | 'furnace' | 'chest'
+let contKey = null;                                  // "x,y,z" of the open container
+
+const invEl = document.getElementById('inv');
+const cursorEl = document.getElementById('cursorItem');
+const dollCanvas = document.getElementById('doll');
+const ARMOR_GHOST = { head: '⛑', chest: '👕', legs: '👖', feet: '🥾' };
+
+/* ---- Recipes ----
+ * shape: rows of type names (null = empty), matched against the
+ * trimmed crafting grid (and its mirror). shapeless: exact multiset. */
+const R = (shape, type, count = 1) => ({ shape, out: { type, count } });
+const S = (list, type, count = 1) => ({ shapeless: list, out: { type, count } });
+// The COMPLETE vanilla recipe book. Ingredient names that no in-game
+// item provides yet (redstone, string, paper…) are registered anyway —
+// those recipes simply can't be assembled until the material exists.
+// updateCraftResult also skips any recipe whose OUTPUT type doesn't
+// exist, so unimplemented outputs are safe dead data, not crashes.
+const RECIPES = [
+  /* ---- basic blocks & materials ---- */
+  S(['log'], 'wood', 4),
+  R([['wood'], ['wood']], 'stick', 4),
+  R([['wood', 'wood'], ['wood', 'wood']], 'crafting'),
+  R([['coal'], ['stick']], 'torch', 4),
+  R([['charcoal'], ['stick']], 'torch', 4),
+  R([['coal'], ['stick'], ['soul_sand']], 'soul_torch', 4),
+  R([['wood', 'wood', 'wood'], ['wood', null, 'wood'], ['wood', 'wood', 'wood']], 'chest'),
+  R([['wood', 'slab', 'wood'], ['wood', null, 'wood'], ['wood', 'slab', 'wood']], 'barrel'),
+  R([['stone', 'stone', 'stone'], ['stone', null, 'stone'], ['stone', 'stone', 'stone']], 'furnace'),
+  R([['iron', 'iron', 'iron'], ['iron', 'furnace', 'iron'], ['smooth_stone', 'smooth_stone', 'smooth_stone']], 'blast_furnace'),
+  R([[null, 'log', null], ['log', 'furnace', 'log'], [null, 'log', null]], 'smoker'),
+  R([['string', 'string'], ['wood', 'wood']], 'loom'),
+  R([['paper', 'paper'], ['wood', 'wood']], 'cartography_table'),
+  R([['flint', 'flint'], ['wood', 'wood']], 'fletching_table'),
+  R([['stick', 'slab', 'stick'], ['wood', null, 'wood']], 'grindstone'),
+  R([['iron', 'iron'], ['wood', 'wood'], ['wood', 'wood']], 'smithing_table'),
+  R([[null, 'iron', null], ['stone', 'stone', 'stone']], 'stonecutter'),
+  R([['stick', null, 'stick'], ['stick', 'stick', 'stick'], ['stick', null, 'stick']], 'ladder', 3),
+  R([['sugar_cane', 'sugar_cane', 'sugar_cane']], 'paper', 3),
+  S(['paper', 'paper', 'paper', 'leather'], 'book'),
+  R([['wood', 'wood', 'wood'], ['book', 'book', 'book'], ['wood', 'wood', 'wood']], 'bookshelf'),
+  R([['glass', 'glass', 'glass'], ['glass', 'glass', 'glass']], 'glass_pane', 16),
+  R([['iron', 'iron', 'iron'], ['iron', 'iron', 'iron']], 'iron_bars', 16),
+  R([['iron_block', 'iron_block', 'iron_block'], [null, 'iron', null], ['iron', 'iron', 'iron']], 'anvil'),
+  R([['iron', 'crafting', 'iron'], ['iron', 'redstone', 'iron'], ['iron', 'dropper', 'iron']], 'crafter'),
+  /* ---- tools & utility (loop below adds all 6 material tiers) ---- */
+  R([['iron', null], [null, 'iron']], 'shears'),
+  R([['iron', null, 'iron'], [null, 'iron', null]], 'bucket'),
+  S(['iron', 'flint'], 'flint_and_steel'),
+  R([[null, 'iron', null], ['iron', 'redstone', 'iron'], [null, 'iron', null]], 'compass'),
+  R([[null, 'gold', null], ['gold', 'redstone', 'gold'], [null, 'gold', null]], 'clock'),
+  R([['amethyst'], ['copper'], ['copper']], 'spyglass'),
+  R([['echo_shard', 'echo_shard', 'echo_shard'], ['echo_shard', 'compass', 'echo_shard'], ['echo_shard', 'echo_shard', 'echo_shard']], 'recovery_compass'),
+  R([[null, 'stick', 'string'], ['stick', null, 'string'], [null, 'stick', 'string']], 'bow'),
+  R([['iron', 'stick', 'iron'], ['string', 'tripwire_hook', 'string'], [null, 'stick', null]], 'crossbow'),
+  R([['flint'], ['stick'], ['feather']], 'arrow', 4),
+  R([[null, null, 'stick'], [null, 'stick', 'string'], ['stick', null, 'string']], 'fishing_rod'),
+  R([['copper'], ['copper'], ['copper']], 'lightning_rod'),
+  R([['feather'], ['copper'], ['stick']], 'brush'),
+  /* ---- armor & shield (loop below adds all 4 material tiers) ---- */
+  R([['wood', 'iron', 'wood'], ['wood', 'wood', 'wood'], [null, 'wood', null]], 'shield'),
+  /* ---- redstone components (need redstone dust etc.) ---- */
+  R([['redstone'], ['stick']], 'redstone_torch'),
+  R([['redstone', 'redstone', 'redstone'], ['redstone', 'redstone', 'redstone'], ['redstone', 'redstone', 'redstone']], 'redstone_block'),
+  R([['redstone_torch', 'redstone', 'redstone_torch'], ['stone', 'stone', 'stone']], 'repeater'),
+  R([[null, 'redstone_torch', null], ['redstone_torch', 'quartz', 'redstone_torch'], ['stone', 'stone', 'stone']], 'comparator'),
+  R([['wood', 'wood', 'wood'], ['stone', 'iron', 'stone'], ['stone', 'redstone', 'stone']], 'piston'),
+  R([['slime'], ['piston']], 'sticky_piston'),
+  R([['stone', 'stone', 'stone'], ['quartz', 'redstone', 'redstone'], ['stone', 'stone', 'stone']], 'observer'),
+  R([['stone', 'stone', 'stone'], ['stone', 'bow', 'stone'], ['stone', 'redstone', 'stone']], 'dispenser'),
+  R([['stone', 'stone', 'stone'], ['stone', null, 'stone'], ['stone', 'redstone', 'stone']], 'dropper'),
+  R([['iron', null, 'iron'], ['iron', 'chest', 'iron'], [null, 'iron', null]], 'hopper'),
+  R([['glass', 'glass', 'glass'], ['quartz', 'quartz', 'quartz'], ['slab', 'slab', 'slab']], 'daylight_detector'),
+  R([['iron'], ['stick'], ['wood']], 'tripwire_hook', 2),
+  S(['chest', 'tripwire_hook'], 'trapped_chest'),
+  R([[null, 'redstone', null], ['redstone', 'hay', 'redstone'], [null, 'redstone', null]], 'target'),
+  R([['wood', 'wood', 'wood'], ['wood', 'redstone', 'wood'], ['wood', 'wood', 'wood']], 'note_block'),
+  R([['wood', 'wood', 'wood'], ['wood', 'diamond', 'wood'], ['wood', 'wood', 'wood']], 'jukebox'),
+  R([[null, 'redstone', null], ['redstone', 'glowstone', 'redstone'], [null, 'redstone', null]], 'redstone_lamp'),
+  R([['gunpowder', 'sand', 'gunpowder'], ['sand', 'gunpowder', 'sand'], ['gunpowder', 'sand', 'gunpowder']], 'tnt'),
+  /* ---- transportation ---- */
+  R([['iron', null, 'iron'], ['iron', 'iron', 'iron']], 'minecart'),
+  S(['minecart', 'chest'], 'chest_minecart'),
+  S(['minecart', 'hopper'], 'hopper_minecart'),
+  S(['minecart', 'tnt'], 'tnt_minecart'),
+  R([['gold', null, 'gold'], ['gold', 'stick', 'gold'], ['gold', 'redstone', 'gold']], 'powered_rail', 6),
+  R([['iron', null, 'iron'], ['iron', 'pressure_plate', 'iron'], ['iron', 'redstone', 'iron']], 'detector_rail', 6),
+  R([['iron', 'stick', 'iron'], ['iron', 'redstone_torch', 'iron'], ['iron', 'stick', 'iron']], 'activator_rail', 6),
+  R([['iron', null, 'iron'], ['iron', 'stick', 'iron'], ['iron', null, 'iron']], 'rails', 16),
+  R([['wood', null, 'wood'], ['wood', 'wood', 'wood']], 'boat'),
+  S(['boat', 'chest'], 'chest_boat'),
+  /* ---- food & brewing ---- */
+  R([['wood', null, 'wood'], [null, 'wood', null]], 'bowl', 4),
+  S(['bowl', 'red_mushroom', 'brown_mushroom'], 'mushroom_stew'),
+  S(['bowl', 'cooked_rabbit', 'baked_potato', 'carrot', 'red_mushroom'], 'rabbit_stew'),
+  S(['bowl', 'beetroot', 'beetroot', 'beetroot', 'beetroot', 'beetroot', 'beetroot'], 'beetroot_soup'),
+  R([['wheat', 'wheat', 'wheat']], 'bread'),
+  R([['wheat', 'cocoa', 'wheat']], 'cookie', 8),
+  R([['milk', 'milk', 'milk'], ['sugar', 'egg', 'sugar'], ['wheat', 'wheat', 'wheat']], 'cake'),
+  S(['pumpkin', 'sugar', 'egg'], 'pumpkin_pie'),
+  R([['gold', 'gold', 'gold'], ['gold', 'apple', 'gold'], ['gold', 'gold', 'gold']], 'golden_apple'),
+  R([['gold_nugget', 'gold_nugget', 'gold_nugget'], ['gold_nugget', 'carrot', 'gold_nugget'], ['gold_nugget', 'gold_nugget', 'gold_nugget']], 'golden_carrot'),
+  R([['blaze_rod'], ['stone'], ['stone', 'stone', 'stone']], 'brewing_stand'),
+  R([['iron', null, 'iron'], ['iron', null, 'iron'], ['iron', 'iron', 'iron']], 'cauldron'),
+  R([['glass', null, 'glass'], [null, 'glass', null]], 'glass_bottle', 3),
+  /* ---- decoration & lighting ---- */
+  R([['wool', 'wool', 'wool'], ['wood', 'wood', 'wood']], 'bed'),
+  R([['stick', 'stick', 'stick'], ['stick', 'leather', 'stick'], ['stick', 'stick', 'stick']], 'item_frame'),
+  R([['stick', 'stick', 'stick'], ['stick', 'wool', 'stick'], ['stick', 'stick', 'stick']], 'painting'),
+  R([['wood', 'wood', 'wood'], ['wood', 'wood', 'wood'], [null, 'stick', null]], 'sign', 3),
+  R([[null, 'stick', null], ['stick', 'coal', 'stick'], ['log', 'log', 'log']], 'campfire'),
+  R([[null, 'stick', null], ['stick', 'charcoal', 'stick'], ['log', 'log', 'log']], 'campfire'),
+  R([['iron_nugget', 'iron_nugget', 'iron_nugget'], ['iron_nugget', 'torch', 'iron_nugget'], ['iron_nugget', 'iron_nugget', 'iron_nugget']], 'lantern'),
+  R([['glass', 'glass', 'glass'], ['glass', 'nether_star', 'glass'], ['obsidian', 'obsidian', 'obsidian']], 'beacon'),
+  R([['obsidian', 'obsidian', 'obsidian'], ['obsidian', 'ender_eye', 'obsidian'], ['obsidian', 'obsidian', 'obsidian']], 'ender_chest'),
+  R([['shulker_shell'], ['chest'], ['shulker_shell']], 'shulker_box'),
+  R([[null, 'book', null], ['diamond', 'obsidian', 'diamond'], ['obsidian', 'obsidian', 'obsidian']], 'enchanting_table'),
+  S(['book', 'ink_sac', 'feather'], 'book_and_quill'),
+  S(['paper', 'gunpowder'], 'firework_rocket', 3),
+  R([['paper', 'paper', 'paper'], ['paper', 'compass', 'paper'], ['paper', 'paper', 'paper']], 'map'),
+];
+// tools in all six material tiers (wood/stone/copper/iron/gold/diamond)
+for (const mat of Object.keys(TOOL_TIERS)) {
+  const m = mat === 'wood' ? 'wood' : mat === 'stone' ? 'stone' : mat;   // ingredient type name
+  RECIPES.push(
+    R([[m, m, m], [null, 'stick', null], [null, 'stick', null]], mat + '_pick'),
+    R([[m, m], [m, 'stick'], [null, 'stick']], mat + '_axe'),
+    R([[m], ['stick'], ['stick']], mat + '_shovel'),
+    R([[m, m], [null, 'stick'], [null, 'stick']], mat + '_hoe'),
+    R([[m], [m], ['stick']], mat + '_sword'),
+  );
+}
+// armor in all four material tiers (copper/iron/gold/diamond)
+for (const mat of ['copper', 'iron', 'gold', 'diamond']) {
+  RECIPES.push(
+    R([[mat, mat, mat], [mat, null, mat]], mat + '_helmet'),
+    R([[mat, null, mat], [mat, mat, mat], [mat, mat, mat]], mat + '_chestplate'),
+    R([[mat, mat, mat], [mat, null, mat], [mat, null, mat]], mat + '_leggings'),
+    R([[mat, null, mat], [mat, null, mat]], mat + '_boots'),
+  );
+}
+
+const craftCells = () => craftSize === 2 ? [0, 1, 3, 4] : [0, 1, 2, 3, 4, 5, 6, 7, 8];
+
+// Trim the 3×3 grid of types to its bounding box; null if empty.
+function trimmedGrid() {
+  const g = [[null,null,null],[null,null,null],[null,null,null]];
+  for (const i of craftCells()) g[Math.floor(i / 3)][i % 3] = craftGrid[i]?.type ?? null;
+  let r0 = 3, r1 = -1, c0 = 3, c1 = -1;
+  for (let r = 0; r < 3; r++)
+    for (let c = 0; c < 3; c++)
+      if (g[r][c]) { r0 = Math.min(r0, r); r1 = Math.max(r1, r); c0 = Math.min(c0, c); c1 = Math.max(c1, c); }
+  if (r1 < 0) return null;
+  return g.slice(r0, r1 + 1).map((row) => row.slice(c0, c1 + 1));
+}
+
+function shapeMatches(g, shape) {
+  const w = Math.max(...shape.map((r) => r.length));
+  if (g.length !== shape.length || g[0].length !== w) return false;
+  for (let r = 0; r < g.length; r++)
+    for (let c = 0; c < w; c++)
+      if ((g[r][c] ?? null) !== (shape[r][c] ?? null)) return false;
+  return true;
+}
+
+function updateCraftResult() {
+  craftResult = null;
+  const g = trimmedGrid();
+  if (!g) return;
+  const flat = g.flat().filter(Boolean).sort();
+  for (const r of RECIPES) {
+    if (!BLOCK_TYPES[r.out.type]) continue;   // recipe registered, output not implemented yet
+    if (r.shapeless) {
+      if (flat.length === r.shapeless.length &&
+          flat.every((t, i) => t === [...r.shapeless].sort()[i])) { craftResult = { ...r.out }; return; }
+    } else {
+      const mirror = r.shape.map((row) => [...row].reverse());
+      if (shapeMatches(g, r.shape) || shapeMatches(g, mirror)) { craftResult = { ...r.out }; return; }
+    }
+  }
+}
+
+/* ---- Slot addressing: "hot-3" | "main-12" | "armor-head" | "off" ---- */
+function slotRef(id) {
+  const [kind, idx] = id.split('-');
+  if (kind === 'hot')   return { get: () => rightHand[+idx], set: (v) => rightHand[+idx] = v };
+  if (kind === 'main')  return { get: () => mainInv[+idx],   set: (v) => mainInv[+idx] = v };
+  if (kind === 'craft') return { get: () => craftGrid[+idx], set: (v) => craftGrid[+idx] = v };
+  if (kind === 'off')   return { get: () => leftHand,        set: (v) => leftHand = v };
+  if (kind === 'armor') return {
+    get: () => armorInv[idx], set: (v) => armorInv[idx] = v,
+    accepts: (t) => BLOCK_TYPES[t].armor === idx,            // only the matching piece
+  };
+  // container slots resolve into whatever chest/furnace is open
+  const c = contKey && containers.get(contKey);
+  if (c) {
+    if (kind === 'chest') return { get: () => c.slots[+idx], set: (v) => c.slots[+idx] = v };
+    if (kind === 'fin')   return { get: () => c.in,   set: (v) => c.in = v };
+    if (kind === 'ffuel') return { get: () => c.fuel, set: (v) => c.fuel = v,
+                                   accepts: (t) => !!BLOCK_TYPES[t].fuel };
+    if (kind === 'fout')  return { get: () => c.out,  set: (v) => c.out = v,
+                                   accepts: () => false };   // take-only
+  }
+  return null;
+}
+
+function clickSlot(id, btn) {
+  if (id === 'result') {                                     // craft!
+    if (!craftResult) return;
+    // Cursor empty or same item → ride the cursor. Holding something
+    // ELSE must still work (the old silent refusal made crafting feel
+    // broken): deposit the output straight into the inventory instead.
+    if (!cursorStack) cursorStack = { ...craftResult };
+    else if (cursorStack.type === craftResult.type &&
+             cursorStack.count + craftResult.count <= STACK_CAP) cursorStack.count += craftResult.count;
+    else {
+      const leftover = addToInventory(craftResult.type, craftResult.count);
+      if (leftover > 0) spawnDropAt(player.pos.x, player.pos.y + 0.5, player.pos.z, craftResult.type, leftover);
+    }
+    for (const i of craftCells()) {                          // consume one of each input
+      const s = craftGrid[i];
+      if (s && --s.count <= 0) craftGrid[i] = null;
+    }
+  } else {
+    const ref = slotRef(id);
+    if (!ref) return;
+    const s = ref.get();
+    if (btn === 0) {                                         // left: pick/place/swap/merge
+      if (!cursorStack && s) { ref.set(null); cursorStack = s; }
+      else if (cursorStack && (!ref.accepts || ref.accepts(cursorStack.type))) {
+        if (!s) { ref.set(cursorStack); cursorStack = null; }
+        else if (s.type === cursorStack.type) {
+          const mv = Math.min(STACK_CAP - s.count, cursorStack.count);
+          s.count += mv; cursorStack.count -= mv;
+          if (cursorStack.count <= 0) cursorStack = null;
+        } else { ref.set(cursorStack); cursorStack = s; }
+      }
+    } else if (btn === 2) {                                  // right: half / place one
+      if (!cursorStack && s) {
+        const take = Math.ceil(s.count / 2);
+        cursorStack = { type: s.type, count: take };
+        s.count -= take;
+        if (s.count <= 0) ref.set(null);
+      } else if (cursorStack && (!ref.accepts || ref.accepts(cursorStack.type))) {
+        if (!s) { ref.set({ type: cursorStack.type, count: 1 }); cursorStack.count--; }
+        else if (s.type === cursorStack.type && s.count < STACK_CAP) { s.count++; cursorStack.count--; }
+        if (cursorStack.count <= 0) cursorStack = null;
+      }
+    }
+  }
+  updateCraftResult();
+  renderInv();
+  buildHotbar();
+  updateStatsHUD();   // armor bar reacts to equipping/removing pieces
+}
+
+/* ---- Rendering ---- */
+function invSlotHTML(id, stack, ghost = '') {
+  const inner = stack
+    ? `<div class="swatch" style="background-image:url(${thumbURL(stack.type)})"></div>` +
+      (stack.count > 1 ? `<span class="count">${stack.count}</span>` : '')
+    : (ghost ? `<span class="ghost">${ghost}</span>` : '');
+  return `<div class="islot" data-slot="${id}">${inner}</div>`;
+}
+
+// Re-render just the furnace strip (called by the smelt tick too).
+function renderFurnaceProgress() {
+  const c = contKey && containers.get(contKey);
+  if (!c || c.kind !== 'furnace') return;
+  document.getElementById('finCell').innerHTML   = invSlotHTML('fin', c.in);
+  document.getElementById('ffuelCell').innerHTML = invSlotHTML('ffuel', c.fuel, '🔥');
+  document.getElementById('foutCell').innerHTML  = invSlotHTML('fout', c.out);
+  document.getElementById('fireCell').style.opacity = c.burn > 0 ? '1' : '0.25';
+  document.getElementById('fprog').style.width = Math.floor((c.prog / SMELT_TIME) * 38) + 'px';
+}
+
+function renderInv() {
+  // player screen vs container screen: swap the top area
+  document.querySelector('.inv-top').classList.toggle('hidden', uiMode !== 'player');
+  document.getElementById('containerArea').classList.toggle('hidden', uiMode === 'player');
+  if (uiMode !== 'player') {
+    const c = containers.get(contKey);
+    document.getElementById('contLabel').textContent = uiMode === 'chest' ? 'Chest' : 'Furnace';
+    document.getElementById('furnaceUI').style.display = uiMode === 'furnace' ? 'flex' : 'none';
+    document.getElementById('chestGrid').style.display = uiMode === 'chest' ? 'grid' : 'none';
+    if (uiMode === 'chest' && c)
+      document.getElementById('chestGrid').innerHTML =
+        c.slots.map((s, i) => invSlotHTML('chest-' + i, s)).join('');
+    else renderFurnaceProgress();
+  }
+  document.getElementById('armorCol').innerHTML =
+    ['head', 'chest', 'legs', 'feet'].map((k) => invSlotHTML('armor-' + k, armorInv[k], ARMOR_GHOST[k])).join('');
+  document.getElementById('offCol').innerHTML = invSlotHTML('off', leftHand, '🛡');
+  const cellsEl = document.getElementById('craftCells');
+  cellsEl.style.gridTemplateColumns = `repeat(${craftSize}, 44px)`;
+  cellsEl.innerHTML = craftCells().map((i) => invSlotHTML('craft-' + i, craftGrid[i])).join('');
+  document.getElementById('resultCell').innerHTML =
+    `<div class="islot" data-slot="result">${craftResult
+      ? `<div class="swatch" style="background-image:url(${thumbURL(craftResult.type)})"></div>` +
+        (craftResult.count > 1 ? `<span class="count">${craftResult.count}</span>` : '') : ''}</div>`;
+  document.getElementById('mainGrid').innerHTML = mainInv.map((s, i) => invSlotHTML('main-' + i, s)).join('');
+  document.getElementById('hotGrid').innerHTML = rightHand.map((s, i) => invSlotHTML('hot-' + i, s)).join('');
+  cursorEl.className = cursorStack ? '' : 'hidden';
+  if (cursorStack)
+    cursorEl.innerHTML = `<div class="swatch" style="background-image:url(${thumbURL(cursorStack.type)})"></div>` +
+      (cursorStack.count > 1 ? `<span class="count">${cursorStack.count}</span>` : '');
+  drawDoll();
+}
+
+/* ---- Paper-doll: pixel Steve + equipped armor overlays ---- */
+function drawDoll() {
+  const g = dollCanvas.getContext('2d');
+  g.clearRect(0, 0, 64, 128);
+  const F = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x * 4, y * 4, w * 4, h * 4); };
+  F(4, 0, 8, 8, '#d8a06c');                                  // head
+  F(4, 0, 8, 3, '#3b2a1c'); F(4, 3, 1, 2, '#3b2a1c'); F(11, 3, 1, 2, '#3b2a1c');   // hair
+  F(5, 4, 2, 1, '#fff'); F(9, 4, 2, 1, '#fff');              // eyes
+  F(6, 4, 1, 1, '#4a3fb5'); F(9, 4, 1, 1, '#4a3fb5');
+  F(7, 6, 2, 1, '#b0754a');                                  // mouth shading
+  F(0, 8, 4, 12, '#d8a06c'); F(12, 8, 4, 12, '#d8a06c');     // arms
+  F(0, 8, 4, 3, '#2aa198'); F(12, 8, 4, 3, '#2aa198');       // sleeves
+  F(4, 8, 8, 12, '#2aa198');                                 // shirt
+  F(4, 20, 4, 12, '#3f51b5'); F(8, 20, 4, 12, '#3f51b5');    // pants
+  F(4, 29, 8, 3, '#4a4a4a');                                 // shoes
+  // armor overlays, tinted by material tier (copper / iron / diamond)
+  const tierPal = (k) => armorInv[k] && ARMOR_PALS[BLOCK_TYPES[armorInv[k].type].tier];
+  let p;
+  if ((p = tierPal('head')))  { F(4, 0, 8, 4, p.c); F(4, 4, 1, 2, p.c); F(11, 4, 1, 2, p.c); F(4, 0, 8, 1, p.hi); }
+  if ((p = tierPal('chest'))) { F(4, 8, 8, 12, p.c); F(0, 8, 4, 4, p.c); F(12, 8, 4, 4, p.c); F(7, 10, 2, 6, p.d); }
+  if ((p = tierPal('legs')))  { F(4, 20, 4, 8, p.d); F(8, 20, 4, 8, p.d); }
+  if ((p = tierPal('feet')))  { F(4, 28, 4, 4, p.c); F(8, 28, 4, 4, p.c); }
+  if (leftHand?.type === 'shield') {                         // offhand shield
+    F(12, 14, 4, 7, '#7a5a2f'); F(13, 13, 2, 1, '#7a5a2f'); F(13, 21, 2, 1, '#7a5a2f'); F(13, 16, 2, 2, IRON_C);
+  }
+}
+
+/* ---- Open / close ---- */
+function openInventory(size) {
+  craftSize = size;
+  uiMode = 'player';
+  invOpen = true;                       // set BEFORE unlock so the overlay stays hidden
+  if (controls.isLocked) controls.unlock();
+  invEl.classList.remove('hidden');
+  updateCraftResult();
+  renderInv();
+}
+
+// Right-clicked a chest or furnace block: same screen, swapped top.
+function openContainer(kind, x, y, z) {
+  containerAt(x, y, z, kind === 'chest' ? 'chest' : 'furnace');
+  uiMode = kind === 'chest' ? 'chest' : 'furnace';
+  contKey = `${x},${y},${z}`;
+  invOpen = true;
+  if (controls.isLocked) controls.unlock();
+  invEl.classList.remove('hidden');
+  renderInv();
+}
+
+function closeInventory() {
+  // return crafting-grid + cursor contents to the inventory
+  const putBack = (s) => {
+    if (!s) return;
+    const left = addToInventory(s.type, s.count);
+    if (left > 0) spawnDropAt(player.pos.x, player.pos.y + 0.5, player.pos.z, s.type, left);
+  };
+  craftGrid.forEach((s, i) => { putBack(s); craftGrid[i] = null; });
+  putBack(cursorStack); cursorStack = null;
+  craftResult = null;
+  invOpen = false;
+  uiMode = 'player';
+  contKey = null;   // chest/furnace contents stay in `containers`
+  invEl.classList.add('hidden');
+  cursorEl.classList.add('hidden');
+  buildHotbar();
+  controls.lock();
+  // if the browser refuses to re-lock (e.g. right after Esc), fall
+  // back to the click-to-play overlay so the player isn't stranded
+  setTimeout(() => { if (!controls.isLocked && !invOpen) overlay.classList.remove('hidden'); }, 400);
+}
+
+addEventListener('keydown', (e) => {
+  if (e.code === 'KeyE') {
+    if (invOpen) closeInventory();
+    else if (controls.isLocked) openInventory(2);
+  }
+  if (e.code === 'Escape' && invOpen) closeInventory();
+});
+
+invEl.addEventListener('mousedown', (e) => {
+  const el = e.target.closest('[data-slot]');
+  e.preventDefault();
+  if (el) clickSlot(el.dataset.slot, e.button);
+});
+document.addEventListener('mousemove', (e) => {
+  if (cursorStack) { cursorEl.style.left = e.clientX + 'px'; cursorEl.style.top = e.clientY + 'px'; }
+});
+
+/* ================================================================
+ * SECTION 5e: ANIMALS + DEATH SCREEN
+ * Box-built mobs that wander, follow terrain, take hits with
+ * knockback... except cows. NEVER punch a cow.
+ * ================================================================ */
+
+// hp is tuned to fists (1 dmg each): sheep die in 8 punches, chickens in 4.
+// Hostiles (`hostile: true`) spawn only at night or in caves and BURN
+// in direct sunlight. dmg = melee damage; skeleton shoots instead.
+const MOB_DEFS = {
+  cow:     { hp: 8,  speed: 1.1, aabb: { w: 1.1, h: 1.6 } },
+  sheep:   { hp: 8,  speed: 1.0, aabb: { w: 1.0, h: 1.5 } },
+  chicken: { hp: 4,  speed: 1.4, aabb: { w: 0.6, h: 1.2 } },
+  pig:     { hp: 8,  speed: 1.0, aabb: { w: 1.0, h: 1.3 } },
+  horse:   { hp: 12, speed: 2.0, aabb: { w: 1.1, h: 2.4 } },
+  // dmg 7 = an unarmored player (20 hp) dies in exactly 3 hits
+  zombie:   { hp: 20, speed: 1.0,  aabb: { w: 0.6, h: 1.95 }, hostile: true, dmg: 7 },
+  skeleton: { hp: 20, speed: 1.1,  aabb: { w: 0.6, h: 1.99 }, hostile: true },
+  creeper:  { hp: 20, speed: 1.2,  aabb: { w: 0.6, h: 1.7 },  hostile: true },
+  spider:   { hp: 16, speed: 1.55, aabb: { w: 1.2, h: 0.95 }, hostile: true, dmg: 7 },
+};
+
+// what each mob leaves behind when killed
+const MOB_DROPS = {
+  chicken: [['feather', 6], ['chicken_meat', 1]],
+  sheep:   [['wool', 2], ['lamb_meat', 1]],
+  pig:     [],                 // pigs drop nothing
+  horse:   [],
+  cow:     [],                 // you don't kill cows. cows kill you.
+  zombie:   [['rotten_flesh', 1]],
+  skeleton: [['bone', 2], ['arrow', 2]],
+  creeper:  [['gunpowder', 2]],
+  spider:   [['string', 2]],
+};
+const mobs = [];
+let mobSpawnTimer = 0;
+let hostileSpawnTimer = 5;
+const hostileCount = () => mobs.reduce((n, m) => n + (m.def.hostile ? 1 : 0), 0);
+const passiveCount = () => mobs.length - hostileCount();
+
+// Pixel-mottled skins for the hostile mobs (like the real textures —
+// noisy per-pixel color variation instead of flat plastic colors).
+const CREEPER_PAL  = ['#58ab48', '#4a9a3d', '#6cc35a', '#3f8a33', '#7ecf6c', '#9aa79b', '#87b37e'];
+const ZOMBIE_SKIN  = ['#4d7a3f', '#588a48', '#446e37', '#639a52'];
+const SKELETON_PAL = ['#b4b4b4', '#a8a8a8', '#c2c2c2', '#9c9c9c'];
+const SPIDER_PAL   = ['#2e2723', '#241f1b', '#38302a', '#1b1714'];
+const skinTex = (pal) => makeTexture((ctx) => speckle(ctx, pal));
+
+function buildMob(type) {
+  const g = new THREE.Group(), mats = [], legs = [];
+  // c may be a hex color OR a palette array (renders as mottled pixels)
+  const box = (w, h, d, c, x, y, z, parent = g) => {
+    const material = Array.isArray(c)
+      ? new THREE.MeshLambertMaterial({ map: skinTex(c) })
+      : new THREE.MeshLambertMaterial({ color: c });
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+    mesh.position.set(x, y, z);
+    mats.push(mesh.material);
+    parent.add(mesh);
+    return mesh;
+  };
+  // legs pivot at the hip so they can swing; optional hoof/foot color
+  const leg = (w, len, c, x, z, hipY, footC) => {
+    const hip = new THREE.Group();
+    hip.position.set(x, hipY, z);
+    box(w, len, w, c, 0, -len / 2, 0, hip);
+    if (footC) box(w + 0.03, len * 0.2, w + 0.03, footC, 0, -len + len * 0.1, 0, hip);
+    g.add(hip);
+    legs.push(hip);
+  };
+
+  // small paired eye boxes on the front of the head
+  const eyes = (c, y, z, dx, s = 0.08) => { box(s, s, 0.05, c, dx, y, z); box(s, s, 0.05, c, -dx, y, z); };
+
+  if (type === 'cow') {                                    // dark brown, white patches
+    box(1.0, 0.75, 1.5, '#3a2c22', 0, 1.05, 0);            // body
+    box(0.56, 0.16, 0.7, '#e8e5dc', 0.24, 1.38, -0.3);     // back patch
+    box(0.06, 0.5, 0.6, '#e8e5dc', 0.5, 1.0, 0.2);         // right flank patch
+    box(0.06, 0.4, 0.55, '#e8e5dc', -0.5, 1.0, -0.35);     // left flank patch
+    box(0.7, 0.3, 0.06, '#e8e5dc', 0, 0.95, 0.75);         // chest patch
+    box(0.55, 0.5, 0.55, '#33261d', 0, 1.4, 0.95);         // head
+    box(0.2, 0.3, 0.06, '#e8e5dc', 0, 1.5, 1.23);          // face blaze
+    box(0.34, 0.2, 0.1, '#cfc6bc', 0, 1.22, 1.24);         // light grey muzzle
+    box(0.14, 0.12, 0.22, '#c8c1b4', 0.32, 1.62, 0.85);    // horns
+    box(0.14, 0.12, 0.22, '#c8c1b4', -0.32, 1.62, 0.85);
+    box(0.35, 0.18, 0.35, '#d69a93', 0, 0.62, -0.35);      // udder
+    eyes('#141414', 1.5, 1.23, 0.17);
+    for (const sx of [-0.32, 0.32]) for (const sz of [-0.5, 0.5])
+      leg(0.24, 0.68, '#2e241d', sx, sz, 0.68, '#8d857a');  // grey hooves
+  } else if (type === 'sheep') {                            // wool + tan face/legs
+    box(0.95, 0.8, 1.3, '#e9e7e2', 0, 1.1, 0);              // wool body
+    box(0.4, 0.45, 0.5, '#b58f70', 0, 1.4, 0.78);           // face
+    box(0.48, 0.25, 0.4, '#e9e7e2', 0, 1.63, 0.68);         // wool cap over the forehead
+    box(0.2, 0.12, 0.08, '#a37f62', 0, 1.26, 1.04);         // mouth shading
+    eyes('#141414', 1.48, 1.03, 0.13);
+    for (const sx of [-0.28, 0.28]) for (const sz of [-0.42, 0.42])
+      leg(0.2, 0.7, '#dcd2c2', sx, sz, 0.7, '#8a6a4e');     // cream wool legs, brown hooves
+  } else if (type === 'chicken') {                          // white, wings, red wattle
+    box(0.6, 0.55, 0.85, '#f4f2ec', 0, 0.75, 0);            // body
+    box(0.62, 0.3, 0.5, '#e9e6df', 0, 0.98, -0.35);         // raised tail
+    box(0.1, 0.45, 0.55, '#e9e6df', 0.36, 0.8, 0);          // wings
+    box(0.1, 0.45, 0.55, '#e9e6df', -0.36, 0.8, 0);
+    box(0.35, 0.55, 0.35, '#f4f2ec', 0, 1.35, 0.35);        // head
+    box(0.18, 0.12, 0.2, '#e8a33d', 0, 1.32, 0.62);         // beak
+    box(0.1, 0.18, 0.12, '#c9352b', 0, 1.16, 0.58);         // wattle
+    eyes('#1a1a1a', 1.45, 0.52, 0.11, 0.07);
+    for (const sx of [-0.13, 0.13]) leg(0.09, 0.5, '#e8a33d', sx, 0.05, 0.5, '#e8a33d');
+  } else if (type === 'pig') {                              // pink, snout, short legs
+    box(0.95, 0.7, 1.45, '#eda3a0', 0, 0.8, 0);             // body
+    box(0.6, 0.55, 0.55, '#eda3a0', 0, 0.85, 0.95);         // head, held low
+    box(0.3, 0.22, 0.1, '#d97b76', 0, 0.78, 1.27);          // snout
+    box(0.06, 0.08, 0.04, '#5e2c2a', 0.07, 0.78, 1.32);     // nostrils
+    box(0.06, 0.08, 0.04, '#5e2c2a', -0.07, 0.78, 1.32);
+    eyes('#1a1a1a', 0.98, 1.23, 0.18);
+    for (const sx of [-0.3, 0.3]) for (const sz of [-0.45, 0.45])
+      leg(0.22, 0.45, '#e2938f', sx, sz, 0.45, '#d3807c');
+  } else if (type === 'creeper') {                          // ref: mottled green, sad face, 4 stub feet
+    box(0.5, 0.55, 0.28, CREEPER_PAL, 0, 0.9, 0);           // tall thin body
+    box(0.5, 0.55, 0.28, CREEPER_PAL, 0, 0.35, 0);
+    box(0.56, 0.56, 0.56, CREEPER_PAL, 0, 1.45, 0);         // head
+    // the classic creeper face: hollow eyes + open dropped mouth
+    box(0.14, 0.14, 0.03, '#0a0a0a', 0.14, 1.55, 0.285);    // eyes
+    box(0.14, 0.14, 0.03, '#0a0a0a', -0.14, 1.55, 0.285);
+    box(0.14, 0.2, 0.03, '#0a0a0a', 0, 1.38, 0.285);        // mouth center (drops lower)
+    box(0.07, 0.24, 0.03, '#0a0a0a', 0.105, 1.33, 0.285);   // mouth cheeks
+    box(0.07, 0.24, 0.03, '#0a0a0a', -0.105, 1.33, 0.285);
+    for (const [sx, sz] of [[-0.15, 0.3], [0.15, 0.3], [-0.15, -0.3], [0.15, -0.3]])
+      leg(0.28, 0.34, CREEPER_PAL, sx, sz, 0.34, '#3a5a30'); // 4 chunky feet
+  } else if (type === 'zombie') {                           // ref: green skin, cyan shirt, blue pants, arms OUT
+    box(0.52, 0.75, 0.3, '#31a5a0', 0, 1.33, 0);            // cyan shirt torso
+    box(0.52, 0.52, 0.52, ZOMBIE_SKIN, 0, 1.95, 0);         // green head
+    box(0.13, 0.1, 0.03, '#0f1a0c', 0.13, 2.0, 0.265);      // dark eyes
+    box(0.13, 0.1, 0.03, '#0f1a0c', -0.13, 2.0, 0.265);
+    for (const sx of [-0.37, 0.37]) {                       // arms stretched forward
+      const arm = box(0.22, 0.22, 0.78, ZOMBIE_SKIN, sx, 1.52, 0.36);
+      arm.rotation.x = 0.06;
+      box(0.24, 0.24, 0.2, '#31a5a0', sx, 1.55, 0.05);      // cyan shirt sleeve caps
+    }
+    for (const sx of [-0.13, 0.13])                         // blue-purple pants, grey shoes
+      leg(0.24, 0.95, '#3d3a8f', sx, 0, 0.95, '#5a5a5a');
+  } else if (type === 'skeleton') {                         // ref: grey bones, skull face, holds a bow
+    box(0.5, 0.7, 0.24, SKELETON_PAL, 0, 1.36, 0);          // ribcage torso
+    box(0.44, 0.06, 0.25, '#7d7d7d', 0, 1.45, 0);           // rib shadow lines
+    box(0.44, 0.06, 0.25, '#7d7d7d', 0, 1.28, 0);
+    box(0.52, 0.52, 0.52, SKELETON_PAL, 0, 1.98, 0);        // skull
+    box(0.12, 0.12, 0.03, '#2a2a2a', 0.13, 2.03, 0.265);    // eye sockets
+    box(0.12, 0.12, 0.03, '#2a2a2a', -0.13, 2.03, 0.265);
+    box(0.08, 0.08, 0.03, '#3a3a3a', 0, 1.93, 0.265);       // nose
+    box(0.34, 0.09, 0.03, '#2f2f2f', 0, 1.79, 0.265);       // wide dark mouth
+    const armL = box(0.14, 0.7, 0.14, SKELETON_PAL, -0.3, 1.4, 0.12);   // arms angled down-forward
+    armL.rotation.x = -0.5;
+    const armR = box(0.14, 0.7, 0.14, SKELETON_PAL, 0.3, 1.4, 0.12);
+    armR.rotation.x = -0.5;
+    // bow held horizontally across the front, like the reference:
+    // two arced limbs curving away from the grip + a taut string
+    const bow = new THREE.Group();
+    for (const s of [-1, 1]) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.09, 0.11),
+        new THREE.MeshLambertMaterial({ color: '#4a3018' }));
+      b.position.set(s * 0.26, 0, s * -0.09);
+      b.rotation.y = s * 0.55;                              // curve toward the string
+      mats.push(b.material);
+      bow.add(b);
+      const tip = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.09),
+        new THREE.MeshLambertMaterial({ color: '#3a2712' }));
+      tip.position.set(s * 0.52, 0, s * -0.22);
+      tip.rotation.y = s * 0.9;
+      mats.push(tip.material);
+      bow.add(tip);
+    }
+    const str = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.03, 0.03),
+      new THREE.MeshLambertMaterial({ color: '#e8e8e0' }));
+    str.position.z = -0.26;
+    mats.push(str.material);
+    bow.add(str);
+    bow.position.set(0.05, 1.06, 0.42);                     // held low across the hips
+    bow.rotation.z = -0.15;
+    g.add(bow);
+    for (const sx of [-0.13, 0.13])                         // thin bone legs
+      leg(0.14, 0.95, SKELETON_PAL, sx, 0, 0.95, '#8a8a8a');
+  } else if (type === 'spider') {                           // ref: black, red eyes, 8 splayed legs
+    box(1.0, 0.75, 1.05, SPIDER_PAL, 0, 0.75, -0.55);       // big raised abdomen
+    box(0.6, 0.45, 0.6, SPIDER_PAL, 0, 0.5, 0.1);           // cephalothorax
+    box(0.52, 0.45, 0.5, SPIDER_PAL, 0, 0.52, 0.6);         // head
+    box(0.12, 0.12, 0.03, '#e0281a', 0.11, 0.62, 0.86);     // bright center eyes
+    box(0.12, 0.12, 0.03, '#e0281a', -0.11, 0.62, 0.86);
+    box(0.08, 0.08, 0.03, '#8a1610', 0.24, 0.56, 0.86);     // dark outer eyes
+    box(0.08, 0.08, 0.03, '#8a1610', -0.24, 0.56, 0.86);
+    box(0.08, 0.08, 0.03, '#ff5040', 0.06, 0.46, 0.86);     // lower bright pair
+    box(0.08, 0.08, 0.03, '#ff5040', -0.06, 0.46, 0.86);
+    // 8 two-segment legs: upper arches UP-out, lower drops to the
+    // ground — the classic ⌒ spider silhouette from the reference.
+    // all 8 legs attach at the CEPHALOTHORAX (like the reference) and
+    // fan wide, front pair forward, rear pair backward
+    for (let li = 0; li < 4; li++)
+      for (const side of [-1, 1]) {
+        const hip = new THREE.Group();
+        hip.position.set(side * 0.3, 0.7, 0.28 - li * 0.14);
+        const seg = (len, x, y, rz) => {
+          const s = new THREE.Mesh(new THREE.BoxGeometry(len, 0.09, 0.09),
+            new THREE.MeshLambertMaterial({ color: '#2b2420' }));
+          s.position.set(x, y, 0);
+          s.rotation.z = rz;
+          mats.push(s.material);
+          hip.add(s);
+        };
+        seg(0.6, side * 0.26, 0.16, side * 0.6);            // upper: arches above the body
+        seg(0.85, side * 0.78, -0.1, -side * 0.85);         // lower: drops toward the ground
+        hip.rotation.y = (li - 1.5) * 0.52 * -side;         // wide fan front-to-back
+        g.add(hip);
+        legs.push(hip);
+      }
+  } else {                                                  // horse (ref: brown, CREAM mane + tail, pointed ears)
+    box(0.85, 0.85, 1.7, '#7a4f2c', 0, 1.5, 0);             // body
+    const neck = box(0.35, 0.85, 0.42, '#7a4f2c', 0, 2.15, 0.72);
+    neck.rotation.x = -0.45;
+    box(0.32, 0.34, 0.72, '#6b4425', 0, 2.55, 1.05);        // head
+    box(0.26, 0.2, 0.18, '#5a3820', 0, 2.5, 1.44);          // muzzle
+    box(0.09, 0.16, 0.1, '#6b4425', 0.11, 2.8, 0.85);       // pointed ears
+    box(0.09, 0.16, 0.1, '#6b4425', -0.11, 2.8, 0.85);
+    const mane = box(0.14, 0.8, 0.3, '#d9c496', 0, 2.3, 0.45);   // cream mane down the neck
+    mane.rotation.x = -0.45;
+    box(0.18, 0.75, 0.2, '#d9c496', 0, 1.35, -0.95);        // cream tail
+    eyes('#141414', 2.6, 1.2, 0.14, 0.07);
+    for (const sx of [-0.28, 0.28]) for (const sz of [-0.6, 0.6])
+      leg(0.22, 1.05, '#6b4425', sx, sz, 1.05, '#4a3018');
+  }
+  return { group: g, mats, legs };
+}
+
+function spawnMob(type, x, y, z) {
+  const { group, mats, legs } = buildMob(type);
+  group.position.set(x, y, z);
+  scene.add(group);
+  mobs.push({
+    type, def: MOB_DEFS[type], group, mats, legs,
+    pos: new THREE.Vector3(x, y, z), yaw: Math.random() * Math.PI * 2,
+    vy: 0, kb: new THREE.Vector3(), hp: MOB_DEFS[type].hp,
+    walking: false, timer: Math.random() * 2, hurtT: 0, animT: 0, flee: 0,
+  });
+}
+
+function trySpawnMob() {
+  if (passiveCount() >= 14 || dead) return;
+  const types = ['cow', 'sheep', 'chicken', 'pig', 'horse'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  const ang = Math.random() * Math.PI * 2;
+  const d = 22 + Math.random() * 45;
+  const x = Math.floor(player.pos.x + Math.cos(ang) * d);
+  const z = Math.floor(player.pos.z + Math.sin(ang) * d);
+  const y = surfaceY(x, z);
+  if (y < 3) return;
+  spawnMob(type, x + 0.5, y + 1.01, z + 0.5);
+}
+
+// Hostiles spawn ONLY at night (surface) or in dark caves (any time),
+// never closer than 14 blocks to the player. The night is CROWDED.
+function trySpawnHostile() {
+  if (hostileCount() >= 26 || dead) return;
+  const types = ['zombie', 'skeleton', 'creeper', 'spider'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  const ang = Math.random() * Math.PI * 2;
+  const d = 16 + Math.random() * 40;
+  const x = Math.floor(player.pos.x + Math.cos(ang) * d);
+  const z = Math.floor(player.pos.z + Math.sin(ang) * d);
+  const sy = surfaceY(x, z);
+  if (sunHeight < -0.04) {                 // night: spawn on the surface
+    if (sy < 3) return;
+    spawnMob(type, x + 0.5, sy + 1.01, z + 0.5);
+  } else {                                 // day: only inside caves
+    const spots = [];
+    for (let y = 5; y < sy - 6; y++)
+      if (!getBlock(x, y, z) && !getBlock(x, y + 1, z) && getBlock(x, y - 1, z))
+        spots.push(y);
+    if (!spots.length) return;
+    const y = spots[Math.floor(Math.random() * spots.length)];
+    spawnMob(type, x + 0.5, y + 0.01, z + 0.5);
+  }
+}
+
+function removeMob(i) {
+  const m = mobs[i];
+  scene.remove(m.group);
+  m.group.traverse((o) => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
+  mobs.splice(i, 1);
+}
+
+/* ---- Fire: crossed flame sprites for mobs burning in the sun ----
+ * Two 16×16 flame frames (jagged orange tongues, yellow core, white
+ * heart) alternate at ~10fps on two crossed planes around the mob. */
+function flamePainter(seed) {
+  return (ctx) => {
+    ctx.clearRect(0, 0, TEX_SIZE, TEX_SIZE);
+    for (let x = 0; x < TEX_SIZE; x++) {
+      const n = hash2(x * 7 + seed * 131, seed * 57);              // deterministic tongue height
+      const top = 1 + Math.floor(n * 7);
+      for (let y = top; y < TEX_SIZE; y++) {
+        const depth = (y - top) / (TEX_SIZE - top);
+        ctx.fillStyle = depth > 0.72 ? '#fff6c2'
+                      : depth > 0.42 ? '#ffdd55'
+                      : depth > 0.18 ? '#ff9a1f' : '#e8531a';
+        if (hash2(x * 13 + y * 29, seed) > 0.12) ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  };
+}
+const fireTexes = [flamePainter(1), flamePainter(2)].map((p) => {
+  const t = makeTexture(p);
+  return t;
+});
+function makeFireGroup(w, h) {
+  const g = new THREE.Group();
+  for (const ry of [0, Math.PI / 2]) {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({ map: fireTexes[0], transparent: true,
+        depthWrite: false, side: THREE.DoubleSide })
+    );
+    m.rotation.y = ry;
+    g.add(m);
+  }
+  return g;
+}
+
+/* ---- Skeleton arrows: simple ballistic projectiles ---- */
+const arrows = [];
+const arrowGeo = new THREE.BoxGeometry(0.06, 0.06, 0.5);
+const arrowMat = new THREE.MeshLambertMaterial({ color: '#8a6a3d' });
+
+function shootArrowAt(from, target) {
+  const dir = target.clone().sub(from).normalize();
+  const mesh = new THREE.Mesh(arrowGeo, arrowMat);
+  mesh.position.copy(from);
+  scene.add(mesh);
+  arrows.push({ pos: from.clone(), vel: dir.multiplyScalar(16).add(new THREE.Vector3(0, 2.0, 0)), mesh, age: 0 });
+}
+
+function updateArrows(dt) {
+  for (let i = arrows.length - 1; i >= 0; i--) {
+    const a = arrows[i];
+    a.age += dt;
+    a.vel.y -= 9 * dt;
+    a.pos.addScaledVector(a.vel, dt);
+    a.mesh.position.copy(a.pos);
+    a.mesh.lookAt(a.pos.x + a.vel.x, a.pos.y + a.vel.y, a.pos.z + a.vel.z);
+    const gone = a.age > 8 || solidAt(Math.floor(a.pos.x), Math.floor(a.pos.y), Math.floor(a.pos.z));
+    // hit the player's AABB?
+    const half = PLAYER.width / 2;
+    if (!dead &&
+        a.pos.x > player.pos.x - half && a.pos.x < player.pos.x + half &&
+        a.pos.z > player.pos.z - half && a.pos.z < player.pos.z + half &&
+        a.pos.y > player.pos.y && a.pos.y < player.pos.y + PLAYER.height) {
+      damagePlayer(7, 'A skeleton shot you');   // 3 arrows kill an unarmored player
+      scene.remove(a.mesh); arrows.splice(i, 1);
+      continue;
+    }
+    if (gone) { scene.remove(a.mesh); arrows.splice(i, 1); }
+  }
+}
+
+/* ---- Creeper explosion: batched crater + scaled damage ---- */
+function explode(cx, cy, cz, radius, maxDmg, cause) {
+  const touched = new Set();
+  for (let x = Math.floor(cx - radius); x <= Math.floor(cx + radius); x++)
+    for (let y = Math.max(1, Math.floor(cy - radius)); y <= Math.min(WORLD_HEIGHT - 1, Math.floor(cy + radius)); y++)
+      for (let z = Math.floor(cz - radius); z <= Math.floor(cz + radius); z++) {
+        const dx = x + 0.5 - cx, dy = y + 0.5 - cy, dz = z + 0.5 - cz;
+        if (dx * dx + dy * dy + dz * dz > radius * radius) continue;
+        const t = getBlock(x, y, z);
+        if (!t || !BLOCK_TYPES[t].breakable) continue;    // bedrock survives
+        if (t === 'torch') torchSpots.delete(`${x},${y},${z}`);
+        const cont = containers.get(`${x},${y},${z}`);    // blown-up chests spill
+        if (cont) {
+          const spill = cont.kind === 'chest' ? cont.slots : [cont.in, cont.fuel, cont.out];
+          for (const s of spill) if (s) spawnDropAt(x + 0.5, y + 0.5, z + 0.5, s.type, s.count);
+          containers.delete(`${x},${y},${z}`);
+        }
+        // clear the cell directly; meshes rebuild once at the end
+        const ccx = chunkOf(x), ccz = chunkOf(z), ck = chunkKey(ccx, ccz);
+        const ch = chunks.get(ck);
+        if (!ch) continue;
+        ch.data[cellIndex(x - ccx * CHUNK, y, z - ccz * CHUNK)] = 0;
+        let em = editsByChunk.get(ck);
+        if (!em) editsByChunk.set(ck, em = new Map());
+        em.set(cellIndex(x - ccx * CHUNK, y, z - ccz * CHUNK), 0);
+        touched.add(ck);
+        if (Math.random() < 0.3) spawnDrop(x, y, z, t === 'grass' ? 'dirt' : t);   // some blocks survive as drops
+      }
+  for (const k of touched) {
+    const [a, b] = k.split(',').map(Number);
+    buildChunkMesh(a, b);
+    for (const [na, nb] of [[a+1,b],[a-1,b],[a,b+1],[a,b-1]])
+      if (chunks.get(chunkKey(na, nb))?.mesh) buildChunkMesh(na, nb);
+  }
+  // player: scaled damage (armor applies) + knockback away from the blast
+  const pd = Math.hypot(player.pos.x - cx, player.pos.y + 0.9 - cy, player.pos.z - cz);
+  const range = radius * 2.4;
+  if (pd < range) {
+    damagePlayer(Math.ceil(maxDmg * (1 - pd / range)), cause);
+    const kx = player.pos.x - cx, kz = player.pos.z - cz, L = Math.hypot(kx, kz) || 1;
+    player.vel.x += (kx / L) * 8; player.vel.z += (kz / L) * 8; player.vel.y += 5;
+  }
+  // other mobs caught in the blast
+  for (const m of mobs) {
+    if (m.dying !== undefined) continue;
+    const md = Math.hypot(m.pos.x - cx, m.pos.y + 0.5 - cy, m.pos.z - cz);
+    if (md < range) {
+      m.hp -= Math.ceil(maxDmg * (1 - md / range));
+      if (m.hp <= 0) m.dying = 0.3;
+    }
+  }
+}
+
+function updateMobs(dt) {
+  mobSpawnTimer -= dt;
+  if (mobSpawnTimer <= 0) { mobSpawnTimer = 2; trySpawnMob(); }
+  hostileSpawnTimer -= dt;
+  if (hostileSpawnTimer <= 0) { hostileSpawnTimer = 1.1; trySpawnHostile(); }
+
+  for (let i = mobs.length - 1; i >= 0; i--) {
+    const m = mobs[i];
+    if (m.dying !== undefined) {                        // shrink out and vanish
+      m.dying -= dt;
+      m.group.scale.setScalar(Math.max(0.01, m.dying / 0.3));
+      if (m.dying <= 0) removeMob(i);
+      continue;
+    }
+    if (m.hurtT > 0) {
+      m.hurtT -= dt;
+      if (m.hurtT <= 0) m.mats.forEach((mt) => mt.emissive.setHex(0));
+    }
+
+    const pdx = player.pos.x - m.pos.x, pdz = player.pos.z - m.pos.z;
+    const pdist = Math.hypot(pdx, pdz);
+    const yawToPlayer = Math.atan2(pdx, pdz);
+
+    if (m.def.hostile) {
+      // ---- burn in direct sunlight: REAL flames wrap the mob ----
+      if (sunHeight > 0.06 &&
+          m.pos.y + 1 >= surfaceY(Math.floor(m.pos.x), Math.floor(m.pos.z))) {
+        m.burnT = (m.burnT ?? 0) + dt;
+        m.animT += dt * 2;                              // flicker driver even when idle
+        if (!m.fire) {                                  // attach crossed flame sprites
+          m.fire = makeFireGroup(m.def.aabb.w + 0.5, m.def.aabb.h + 0.4);
+          m.fire.position.y = (m.def.aabb.h + 0.4) / 2 - 0.1;
+          m.group.add(m.fire);
+        }
+        m.fire.visible = true;
+        const frame = fireTexes[(m.animT * 10 | 0) % 2];
+        m.fire.children.forEach((c, ci) => {            // animated, licking upward
+          c.material.map = frame;
+          c.scale.y = 0.9 + Math.sin(m.animT * 21 + ci * 2) * 0.12;
+          c.position.y = (c.scale.y - 1) * 0.3;
+        });
+        if (m.burnT > 0.7) {
+          m.burnT = 0;
+          m.hp -= 2;
+          if (m.hp <= 0) { m.dying = 0.3; continue; }
+        }
+      } else if (m.burnT !== undefined) {
+        if (m.fire) m.fire.visible = false;             // stepped into shade: douse
+        m.burnT = undefined;
+      }
+
+      m.cool = (m.cool ?? 0) - dt;
+
+      if (m.type === 'creeper' && m.fuse !== undefined) {
+        // ---- visible ~4s load-up: white blinking + swelling ----
+        m.walking = false;
+        m.fuse -= dt;
+        const t = 1 - m.fuse / 4;
+        const blink = Math.sin((1 - m.fuse) * (8 + t * 34)) > 0;
+        m.mats.forEach((mt) => mt.emissive.setHex(blink ? 0xcfcfcf : 0x000000));
+        const s = 1 + t * 0.35;
+        m.group.scale.set(s, s, s);
+        if (pdist > 8) {                                // player escaped: defuse
+          m.fuse = undefined;
+          m.group.scale.setScalar(1);
+          m.mats.forEach((mt) => mt.emissive.setHex(0));
+        } else if (m.fuse <= 0) {
+          explode(m.pos.x, m.pos.y + 0.9, m.pos.z, 4.2, 24, 'Creeper');   // BIG crater
+          removeMob(i);
+          continue;
+        }
+      } else if (pdist < 26 && !dead) {
+        // ---- aggro: chase / shoot / prime ----
+        if (m.type === 'skeleton') {
+          if (pdist < 5) { m.walking = true; m.yaw = yawToPlayer + Math.PI; }          // back off
+          else if (pdist > 13) { m.walking = true; m.yaw = yawToPlayer; }              // close in
+          else {
+            m.walking = false;
+            m.yaw = yawToPlayer;
+            if (m.cool <= 0) {
+              m.cool = 2;
+              shootArrowAt(new THREE.Vector3(m.pos.x, m.pos.y + 1.6, m.pos.z),
+                           new THREE.Vector3(player.pos.x, player.pos.y + 1.3, player.pos.z));
+            }
+          }
+        } else if (m.type === 'creeper') {
+          m.walking = true;
+          m.yaw = yawToPlayer;
+          if (pdist < 2.6) m.fuse = 4;                  // start the hiss
+        } else {                                        // zombie + spider: melee
+          m.walking = true;
+          m.yaw = yawToPlayer + Math.sin(m.animT * 0.9) * 0.15;
+          if (pdist < 1.8 && m.cool <= 0) {
+            m.cool = 1.2;
+            damagePlayer(m.def.dmg, m.type === 'spider' ? 'A spider bit you' : 'A zombie got you');
+          }
+        }
+      } else {
+        // no target: shamble around
+        m.timer -= dt;
+        if (m.timer <= 0) {
+          m.walking = !m.walking;
+          m.timer = m.walking ? 2 + Math.random() * 4 : 1 + Math.random() * 3;
+          if (m.walking) m.yaw = Math.random() * Math.PI * 2;
+        }
+      }
+    } else if (m.flee > 0) {
+      // fleeing overrides wandering: sprint directly away from the player
+      m.flee -= dt;
+      m.walking = true;
+      m.yaw = Math.atan2(m.pos.x - player.pos.x, m.pos.z - player.pos.z)
+            + Math.sin(m.animT * 1.7) * 0.35;            // panicked wobble
+    } else {
+      // wander state machine: amble a while, stand a while
+      m.timer -= dt;
+      if (m.timer <= 0) {
+        m.walking = !m.walking;
+        m.timer = m.walking ? 2 + Math.random() * 4 : 1 + Math.random() * 3;
+        if (m.walking) m.yaw = Math.random() * Math.PI * 2;
+      }
+    }
+
+    // horizontal motion: walking (2.3x while fleeing) + decaying knockback
+    const spd = m.def.speed * (m.flee > 0 ? 2.3 : 1);
+    let mx = m.kb.x, mz = m.kb.z;
+    if (m.walking) { mx += Math.sin(m.yaw) * spd; mz += Math.cos(m.yaw) * spd; }
+    m.kb.multiplyScalar(Math.max(0, 1 - 6 * dt));
+    const nx = m.pos.x + mx * dt, nz = m.pos.z + mz * dt;
+    const fx = Math.floor(nx), fz = Math.floor(nz), fy = Math.floor(m.pos.y + 0.01);
+    if (getBlock(fx, fy, fz)) {
+      // one-block step-up if there's headroom, otherwise turn away
+      if (!getBlock(fx, fy + 1, fz) && !getBlock(fx, fy + 2, fz)) {
+        m.pos.y = fy + 1.001; m.pos.x = nx; m.pos.z = nz;
+      } else m.yaw += Math.PI * (0.6 + Math.random() * 0.8);
+    } else { m.pos.x = nx; m.pos.z = nz; }
+
+    // gravity + rest on the ground
+    m.vy -= 22 * dt;
+    m.pos.y += m.vy * dt;
+    const by = Math.floor(m.pos.y - 0.001);
+    if (getBlock(Math.floor(m.pos.x), by, Math.floor(m.pos.z))) { m.pos.y = by + 1; m.vy = 0; }
+    if (m.pos.y < -20) { removeMob(i); continue; }      // wandered into the void
+
+    if (Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) > 110) { removeMob(i); continue; }
+
+    m.group.position.copy(m.pos);
+    m.group.rotation.y = m.yaw;
+    m.animT += dt * (m.walking ? (m.flee > 0 ? 13 : 8) : 0);   // frantic legs while fleeing
+    for (let li = 0; li < m.legs.length; li++)
+      m.legs[li].rotation.x = m.walking ? Math.sin(m.animT + (li % 2) * Math.PI) * 0.55 : 0;
+  }
+}
+
+/* ---- Attacking ---- */
+function rayAABB(o, d, minX, minY, minZ, maxX, maxY, maxZ, maxT) {
+  let t0 = 0, t1 = maxT;
+  const axes = [[o.x, d.x, minX, maxX], [o.y, d.y, minY, maxY], [o.z, d.z, minZ, maxZ]];
+  for (const [ov, dv, mn, mx] of axes) {
+    if (Math.abs(dv) < 1e-8) { if (ov < mn || ov > mx) return null; continue; }
+    let ta = (mn - ov) / dv, tb = (mx - ov) / dv;
+    if (ta > tb) [ta, tb] = [tb, ta];
+    t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+    if (t0 > t1) return null;
+  }
+  return t0;
+}
+
+function mobUnderCrosshair() {
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  let best = null, bestT = PLAYER.reach;
+  for (const m of mobs) {
+    if (m.dying !== undefined) continue;
+    const hw = m.def.aabb.w / 2;
+    const t = rayAABB(camera.position, dir,
+      m.pos.x - hw, m.pos.y, m.pos.z - hw,
+      m.pos.x + hw, m.pos.y + m.def.aabb.h, m.pos.z + hw, bestT);
+    if (t !== null && t < bestT) { bestT = t; best = m; }
+  }
+  return best;
+}
+
+function attackMob(m) {
+  if (m.type === 'cow') {                                // the sacred rule
+    damagePlayer(9999, 'Never, EVER punch a cow');
+    return;
+  }
+  const held = heldStack();
+  const tool = held && BLOCK_TYPES[held.type].tool;
+  m.hp -= tool?.cls === 'sword' ? (tool.dmg ?? 3) : 1;   // fist = 1, swords by tier
+  m.hurtT = 0.25;
+  if (!m.def.hostile) m.flee = 4;                        // animals panic; hostiles keep coming
+  m.mats.forEach((mt) => mt.emissive.setHex(0xaa2222));  // red hurt flash
+  const dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z;
+  const L = Math.hypot(dx, dz) || 1;
+  m.kb.set((dx / L) * 6, 0, (dz / L) * 6);               // knockback
+  m.vy = 3.5;
+  if (m.hp <= 0) {
+    m.dying = 0.3;
+    for (const [t, n] of MOB_DROPS[m.type])              // scatter the loot
+      spawnDropAt(m.pos.x + (Math.random() - 0.5) * 0.5, m.pos.y + 0.6,
+                  m.pos.z + (Math.random() - 0.5) * 0.5, t, n);
+  }
+}
+
+/* ---- Sleeping: brief fade to black while the night skips by ---- */
+function sleepFade() {
+  const el = document.getElementById('sleepFade');
+  el.textContent = 'Zzz…';
+  el.classList.add('asleep');
+  setTimeout(() => el.classList.remove('asleep'), 900);
+}
+
+/* ---- "You Died" screen ---- */
+function showDeathScreen(cause) {
+  const c = document.getElementById('deathTitle');
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.font = 'bold 16px monospace';                      // drawn tiny, upscaled 4x
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('You Died!', c.width / 2, 17);            // pixelated by CSS upscale
+  document.getElementById('deathCause').textContent = cause;
+  document.getElementById('deathScreen').classList.remove('hidden');
+}
+document.getElementById('respawnBtn').addEventListener('click', respawn);
+
+/* ================================================================
+ * SECTION 6: BOOT + MAIN LOOP
+ * ================================================================ */
+
+const overlay = document.getElementById('overlay');
+overlay.addEventListener('click', () => controls.lock());
+controls.addEventListener('lock',   () => overlay.classList.add('hidden'));
+controls.addEventListener('unlock', () => {
+  if (!invOpen && !dead) overlay.classList.remove('hidden');   // inventory/death own their screens
+  mining.held = false;   // Esc mid-mine shouldn't keep digging
+  resetMining();
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  handCamera.aspect = innerWidth / innerHeight;
+  handCamera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// Boot: find the surface at the origin (this generates the spawn
+// chunk on demand); the first updateChunks() call streams in the
+// rest of the spawn area.
+SPAWN.set(0.5, surfaceY(0, 0) + 1.01, 0.5);
+player.pos.copy(SPAWN);
+player.peakY = player.pos.y;
+
+// Starter loot chest a few blocks from spawn: a stack of diamonds,
+// iron + copper in both ore and ingot form, and a crafting table.
+{
+  const cy = surfaceY(4, 4) + 1;
+  setBlock(4, cy, 4, 'chest');
+  const loot = containerAt(4, cy, 4, 'chest');
+  [['diamond', 64], ['iron_ore', 64], ['iron', 64],
+   ['copper_ore', 64], ['copper', 64], ['crafting', 1]]
+    .forEach(([type, count], i) => loot.slots[i] = { type, count });
+}
+
+for (let i = 0; i < 14; i++) trySpawnMob();   // starting animal population
+buildHotbar();
+updateStatsHUD();
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);   // clamp: avoids physics explosions on tab-switch
+  updateChunks();                                // stream terrain around the player
+  if (controls.isLocked) {
+    updatePlayer(dt);
+    updateStats(dt);
+    updateTarget();
+    updateMining(dt);
+    updateHand(dt);
+    updateMobs(dt);
+  }
+  updateDrops(dt);                               // drops keep falling even while paused-looking
+  updateArrows(dt);                              // skeleton arrows mid-flight
+  updateFurnaces(dt);                            // furnaces smelt in real time, UI open or not
+  updateTorchLights(dt);
+  updateDayNight(dt);                            // the sun never stops
+
+  // Pass 1: the world. Pass 2: the held item on a cleared depth
+  // buffer so it always draws on top of nearby geometry.
+  renderer.render(scene, camera);
+  renderer.autoClear = false;
+  renderer.clearDepth();
+  renderer.render(handScene, handCamera);
+  renderer.autoClear = true;
+}
+animate();
+</script>
+</body>
+</html>
